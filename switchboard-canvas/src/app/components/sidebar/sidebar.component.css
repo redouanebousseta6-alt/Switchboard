@@ -1,0 +1,51 @@
+:host {
+  height: 100%;
+  display: block;
+}
+
+/* Custom scrollbar for dark sidebar */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 10px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+/* Ensure app-layers doesn't have its own background/header if we don't want it */
+::ng-deep app-layers .bg-white {
+  background-color: transparent !important;
+}
+
+::ng-deep app-layers h2 {
+  display: none !important;
+}
+
+::ng-deep app-layers .p-4.border-b {
+  display: none !important;
+}
+
+::ng-deep app-layers .border {
+  border-color: #1f2937 !important;
+}
+
+::ng-deep app-layers .text-gray-700 {
+  color: #9ca3af !important;
+}
+
+::ng-deep app-layers .hover\:bg-gray-50:hover {
+  background-color: #1f2937 !important;
+}
+
+::ng-deep app-layers .bg-primary-50 {
+  background-color: #1e293b !important;
+}

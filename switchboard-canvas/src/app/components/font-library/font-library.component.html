@@ -1,0 +1,107 @@
+<div class="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-6 backdrop-blur-sm">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl flex flex-col max-h-[90vh] overflow-hidden border border-gray-100">
+    <!-- Header -->
+    <div class="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+      <div class="flex items-center space-x-3">
+        <div class="bg-primary-600 p-2 rounded-xl shadow-lg shadow-primary-200">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />
+          </svg>
+        </div>
+        <div>
+          <h2 class="text-xl font-extrabold text-gray-900 tracking-tight">Library</h2>
+          <p class="text-xs text-gray-500 font-bold uppercase tracking-widest">Fonts ({{ fonts.length }})</p>
+        </div>
+      </div>
+      
+      <div class="flex items-center space-x-3">
+        <label class="cursor-pointer bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-primary-200 transition-all active:scale-95 flex items-center space-x-2 group">
+          <svg class="w-4 h-4 group-hover:bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          <span>Upload</span>
+          <input type="file" (change)="onFilesSelected($event)" accept=".ttf,.otf,.woff,.woff2" multiple class="hidden">
+        </label>
+        
+        <button (click)="close.emit()" class="px-6 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition-all border border-gray-200">
+          Cancel
+        </button>
+      </div>
+    </div>
+
+    <!-- Sidebar and Grid Layout -->
+    <div class="flex flex-1 overflow-hidden">
+      <!-- Sidebar (mimicking the screenshot) -->
+      <div class="w-64 border-r border-gray-100 bg-gray-50/30 p-4 hidden md:block">
+        <div class="space-y-4">
+          <div class="flex items-center space-x-2 text-primary-600 p-2 bg-primary-50 rounded-lg">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+            <span class="font-bold text-sm">All Assets</span>
+          </div>
+          
+          <div class="pt-4 border-t border-gray-100">
+            <button class="w-full text-left px-2 py-1.5 text-xs font-bold text-gray-400 hover:text-primary-600 transition-colors uppercase tracking-widest">
+              Create folders to help organize your assets.
+            </button>
+          </div>
+        </div>
+        
+        <div class="mt-auto absolute bottom-6 left-6 w-52">
+          <button class="w-full bg-white border-2 border-dashed border-gray-200 hover:border-primary-400 hover:text-primary-600 p-3 rounded-xl text-xs font-bold text-gray-400 transition-all active:scale-95">
+            + New Folder
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Content / Grid -->
+      <div class="flex-1 overflow-y-auto p-8 bg-white">
+        <div *ngIf="loading" class="flex flex-col items-center justify-center py-20 space-y-4">
+          <div class="w-12 h-12 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+          <p class="text-gray-500 font-bold text-sm animate-pulse">Processing Fonts...</p>
+        </div>
+
+        <div *ngIf="!loading && fonts.length === 0" class="flex flex-col items-center justify-center py-20 text-center">
+          <div class="bg-gray-50 p-6 rounded-3xl mb-4">
+            <svg class="w-16 h-16 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-gray-800">No fonts uploaded yet</h3>
+          <p class="text-sm text-gray-500 mt-1 max-w-xs">Upload .ttf or .otf files to use them in your designs.</p>
+        </div>
+
+        <div *ngIf="!loading && fonts.length > 0" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+          <div *ngFor="let font of fonts" 
+               (click)="selectFont(font)"
+               class="group relative bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-primary-500 hover:shadow-xl hover:shadow-primary-50/50 transition-all cursor-pointer">
+            
+            <!-- Font Preview Area -->
+            <div class="aspect-[4/3] bg-gray-50/50 flex items-center justify-center p-4 border-b border-gray-100 group-hover:bg-primary-50/30 transition-colors overflow-hidden">
+              <img *ngIf="font.previewUrl" [src]="font.previewUrl" class="w-full h-full object-contain mix-blend-multiply transition-transform group-hover:scale-110" alt="Preview">
+              <div *ngIf="!font.previewUrl" class="text-4xl font-bold text-gray-300" [style.font-family]="font.name">Aa</div>
+            </div>
+
+            <!-- Font Info -->
+            <div class="p-3 bg-white">
+              <p class="text-[10px] font-bold text-gray-800 truncate mb-0.5 group-hover:text-primary-600">{{ font.name }}</p>
+              <p class="text-[9px] font-medium text-gray-400 uppercase tracking-tighter">{{ font.fileName }}</p>
+            </div>
+
+            <!-- Delete Button -->
+            <button (click)="deleteFont($event, font.id)" 
+                    class="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-md text-red-500 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500 hover:text-white transition-all shadow-sm">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+
+            <!-- Selection Indicator -->
+            <div class="absolute inset-0 border-2 border-transparent group-hover:border-primary-500 rounded-2xl pointer-events-none transition-all"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

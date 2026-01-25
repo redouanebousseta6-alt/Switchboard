@@ -1,0 +1,53 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: switchboard-canvas/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+        working-directory: switchboard-canvas
+
+      - name: Build Angular App
+        run: npm run build
+        working-directory: switchboard-canvas
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: switchboard-canvas/dist/switchboard-canvas/browser
+
+  build-backend-docker:
+    runs-on: ubuntu-latest
+    needs: build-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false # Set to true once you have a registry (Docker Hub, etc.)
+          tags: switchboard-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

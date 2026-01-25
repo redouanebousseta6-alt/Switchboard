@@ -1,0 +1,600 @@
+<div class="h-full flex flex-col">
+  <div class="p-4 border-b border-gray-200">
+    <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">Properties</h2>
+  </div>
+
+  <!-- Canvas Settings (No Selection) -->
+  <div *ngIf="!selectedObject" class="flex-1 overflow-y-auto">
+    <form [formGroup]="propertiesForm" class="p-4 space-y-6">
+      <div class="flex items-center justify-between">
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5z" />
+          </svg>
+          Canvas Settings
+        </span>
+      </div>
+
+      <!-- Canvas Dimensions -->
+      <div>
+        <h3 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Dimensions</h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Width (px)</label>
+            <input 
+              type="number" 
+              formControlName="canvasWidth" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Height (px)</label>
+            <input 
+              type="number" 
+              formControlName="canvasHeight" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+          </div>
+        </div>
+        <p class="text-[10px] text-gray-500 mt-2 italic">* Changing dimensions will resize the white design area.</p>
+      </div>
+
+      <!-- Presets -->
+      <div>
+        <h3 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Presets</h3>
+        <div class="space-y-2">
+          <button 
+            type="button"
+            (click)="setPreset(1080, 1080)"
+            class="w-full text-left px-3 py-2 text-xs bg-gray-50 hover:bg-gray-100 rounded border border-gray-200 transition-colors">
+            Instagram Post (1080x1080)
+          </button>
+          <button 
+            type="button"
+            (click)="setPreset(1080, 1920)"
+            class="w-full text-left px-3 py-2 text-xs bg-gray-50 hover:bg-gray-100 rounded border border-gray-200 transition-colors">
+            Instagram Story (1080x1920)
+          </button>
+          <button 
+            type="button"
+            (click)="setPreset(1200, 630)"
+            class="w-full text-left px-3 py-2 text-xs bg-gray-50 hover:bg-gray-100 rounded border border-gray-200 transition-colors">
+            Facebook Post (1200x630)
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Properties Form -->
+  <div *ngIf="selectedObject" class="flex-1 overflow-y-auto">
+    <form [formGroup]="propertiesForm" class="p-4 space-y-6">
+      
+      <!-- Element Type Badge -->
+      <div class="flex items-center justify-between">
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" *ngIf="getObjectType() === 'rect'">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5z" />
+          </svg>
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" *ngIf="isTextObject()">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10" />
+          </svg>
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" *ngIf="isSwitchboardImage()">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 011.414 0L15 16m-6-6h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          {{ getObjectType() === 'rect' ? 'Rectangle' : (getObjectType() === 'switchboard-textbox' ? 'Switchboard Text' : (isSwitchboardImage() ? 'Switchboard Image' : (isTextObject() ? 'Text' : getObjectType()))) }}
+        </span>
+      </div>
+
+      <!-- API Name -->
+      <div>
+        <label class="block text-xs font-medium text-gray-700 mb-1">API Name</label>
+        <input 
+          type="text" 
+          formControlName="name" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          placeholder="element-name">
+      </div>
+
+      <!-- Position -->
+      <div>
+        <h3 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Position</h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Left (px)</label>
+            <input 
+              type="number" 
+              formControlName="left" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Top (px)</label>
+            <input 
+              type="number" 
+              formControlName="top" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+          </div>
+        </div>
+      </div>
+
+      <!-- Size -->
+      <div>
+        <h3 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Size</h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Width (px)</label>
+            <input 
+              type="number" 
+              formControlName="width" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Height (px)</label>
+            <input 
+              type="number" 
+              formControlName="height" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+          </div>
+        </div>
+      </div>
+
+      <!-- Transform -->
+      <div>
+        <h3 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Transform</h3>
+        <div class="space-y-3">
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs text-gray-600">Angle</label>
+              <span class="text-xs text-gray-500">{{ propertiesForm.get('angle')?.value }}°</span>
+            </div>
+            <input 
+              type="range" 
+              formControlName="angle" 
+              min="0" 
+              max="360" 
+              class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600">
+          </div>
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs text-gray-600">Opacity</label>
+              <span class="text-xs text-gray-500">{{ propertiesForm.get('opacity')?.value }}%</span>
+            </div>
+            <input 
+              type="range" 
+              formControlName="opacity" 
+              min="0" 
+              max="100" 
+              class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600">
+          </div>
+        </div>
+      </div>
+
+      <!-- Rectangle Properties -->
+      <div *ngIf="getObjectType() === 'rect'">
+        <h3 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Rectangle</h3>
+        <div class="space-y-3">
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs text-gray-600">Corner Radius</label>
+              <span class="text-xs text-gray-500">{{ propertiesForm.get('radius')?.value }}px</span>
+            </div>
+            <input 
+              type="range" 
+              formControlName="radius" 
+              min="0" 
+              max="100" 
+              class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600">
+          </div>
+          <div>
+            <app-color-picker 
+              label="Fill Color" 
+              [color]="propertiesForm.get('fill')?.value"
+              (colorChange)="propertiesForm.patchValue({fill: $event})">
+            </app-color-picker>
+          </div>
+          <div>
+            <app-color-picker 
+              label="Stroke Color" 
+              [color]="propertiesForm.get('stroke')?.value"
+              (colorChange)="propertiesForm.patchValue({stroke: $event})">
+            </app-color-picker>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Stroke Width (px)</label>
+            <input 
+              type="number" 
+              formControlName="strokeWidth" 
+              min="0" 
+              max="20" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+          </div>
+        </div>
+      </div>
+
+      <!-- Text Properties -->
+      <div *ngIf="isTextObject()">
+        <h3 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Text</h3>
+        <div class="space-y-3">
+          <!-- Text Content -->
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Content</label>
+            <textarea 
+              formControlName="textContent" 
+              rows="3"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+              placeholder="Enter text content"></textarea>
+          </div>
+
+          <!-- Font Family -->
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Font Family</label>
+            <div class="flex flex-col space-y-2">
+              <div class="flex items-center space-x-2">
+                <div class="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 font-medium truncate">
+                  {{ propertiesForm.get('fontFamily')?.value || 'Arial' }}
+                </div>
+                <button 
+                  type="button"
+                  (click)="openFontLibrary.emit()"
+                  class="px-3 py-2 bg-primary-600 text-white rounded-md text-xs font-bold hover:bg-primary-700 transition-colors shadow-sm active:scale-95 whitespace-nowrap">
+                  Choose Font
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Font Size -->
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Font Size (px)</label>
+            <input 
+              type="number" 
+              formControlName="fontSize"
+              min="8"
+              max="500"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+          </div>
+
+          <!-- Text Color -->
+          <div>
+            <app-color-picker 
+              label="Text Color" 
+              [color]="propertiesForm.get('textColor')?.value"
+              (colorChange)="propertiesForm.patchValue({textColor: $event})">
+            </app-color-picker>
+          </div>
+
+          <!-- Text Alignment -->
+          <div>
+            <label class="block text-xs text-gray-600 mb-2">Text Alignment</label>
+            <div class="flex space-x-2">
+              <button 
+                type="button"
+                (click)="setTextAlign('left')"
+                [class.bg-primary-600]="propertiesForm.get('textAlign')?.value === 'left'"
+                [class.text-white]="propertiesForm.get('textAlign')?.value === 'left'"
+                [class.bg-gray-100]="propertiesForm.get('textAlign')?.value !== 'left'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8M4 18h12" />
+                </svg>
+              </button>
+              <button 
+                type="button"
+                (click)="setTextAlign('center')"
+                [class.bg-primary-600]="propertiesForm.get('textAlign')?.value === 'center'"
+                [class.text-white]="propertiesForm.get('textAlign')?.value === 'center'"
+                [class.bg-gray-100]="propertiesForm.get('textAlign')?.value !== 'center'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M8 12h8M6 18h12" />
+                </svg>
+              </button>
+              <button 
+                type="button"
+                (click)="setTextAlign('right')"
+                [class.bg-primary-600]="propertiesForm.get('textAlign')?.value === 'right'"
+                [class.text-white]="propertiesForm.get('textAlign')?.value === 'right'"
+                [class.bg-gray-100]="propertiesForm.get('textAlign')?.value !== 'right'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M12 12h8M10 18h10" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Font Styling -->
+          <div>
+            <label class="block text-xs text-gray-600 mb-2">Font Style</label>
+            <div class="flex space-x-2">
+              <button 
+                type="button"
+                (click)="toggleFontWeight()"
+                [class.bg-primary-600]="propertiesForm.get('fontWeight')?.value === 'bold'"
+                [class.text-white]="propertiesForm.get('fontWeight')?.value === 'bold'"
+                [class.bg-gray-100]="propertiesForm.get('fontWeight')?.value !== 'bold'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-bold transition-colors hover:bg-primary-500 hover:text-white"
+                title="Bold">
+                B
+              </button>
+              <button 
+                type="button"
+                (click)="toggleFontStyle()"
+                [class.bg-primary-600]="propertiesForm.get('fontStyle')?.value === 'italic'"
+                [class.text-white]="propertiesForm.get('fontStyle')?.value === 'italic'"
+                [class.bg-gray-100]="propertiesForm.get('fontStyle')?.value !== 'italic'"
+                class="flex-1 px-3 py-2 rounded-md text-sm italic transition-colors hover:bg-primary-500 hover:text-white"
+                title="Italic">
+                I
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Switchboard Textbox Advanced Properties -->
+      <div *ngIf="isSwitchboardTextbox()">
+        <h3 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Switchboard Text Box</h3>
+        <div class="space-y-3">
+          
+          <!-- Fill Text Box Toggle -->
+          <div class="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+            <div>
+              <label class="block text-xs font-medium text-gray-700">Fill Text Box</label>
+              <p class="text-xs text-gray-500 mt-0.5">Auto-adjust font size to fill container</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                formControlName="fillTextBox"
+                class="sr-only peer">
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+
+          <!-- Maximum Font Size (only show if fillTextBox is enabled) -->
+          <div *ngIf="propertiesForm.get('fillTextBox')?.value">
+            <label class="block text-xs text-gray-600 mb-1">Maximum Font Size (px)</label>
+            <input 
+              type="number" 
+              formControlName="maxFontSize"
+              min="8"
+              max="500"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+          </div>
+
+          <!-- Vertical Alignment -->
+          <div>
+            <label class="block text-xs text-gray-600 mb-2">Vertical Alignment</label>
+            <div class="flex space-x-2">
+              <button 
+                type="button"
+                (click)="setVerticalAlign('top')"
+                [class.bg-primary-600]="propertiesForm.get('verticalAlign')?.value === 'top'"
+                [class.text-white]="propertiesForm.get('verticalAlign')?.value === 'top'"
+                [class.bg-gray-100]="propertiesForm.get('verticalAlign')?.value !== 'top'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="Align Top">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+              </button>
+              <button 
+                type="button"
+                (click)="setVerticalAlign('middle')"
+                [class.bg-primary-600]="propertiesForm.get('verticalAlign')?.value === 'middle'"
+                [class.text-white]="propertiesForm.get('verticalAlign')?.value === 'middle'"
+                [class.bg-gray-100]="propertiesForm.get('verticalAlign')?.value !== 'middle'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="Align Middle">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <button 
+                type="button"
+                (click)="setVerticalAlign('bottom')"
+                [class.bg-primary-600]="propertiesForm.get('verticalAlign')?.value === 'bottom'"
+                [class.text-white]="propertiesForm.get('verticalAlign')?.value === 'bottom'"
+                [class.bg-gray-100]="propertiesForm.get('verticalAlign')?.value !== 'bottom'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="Align Bottom">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Letter Spacing -->
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs text-gray-600">Letter Spacing</label>
+              <span class="text-xs text-gray-500">{{ propertiesForm.get('letterSpacing')?.value }}</span>
+            </div>
+            <input 
+              type="range" 
+              formControlName="letterSpacing" 
+              min="-50" 
+              max="200" 
+              step="1"
+              class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600">
+          </div>
+
+          <!-- Line Spacing -->
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs text-gray-600">Line Spacing</label>
+              <span class="text-xs text-gray-500">{{ propertiesForm.get('lineSpacing')?.value }}</span>
+            </div>
+            <input 
+              type="range" 
+              formControlName="lineSpacing" 
+              min="0.5" 
+              max="3" 
+              step="0.05"
+              class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600">
+          </div>
+
+          <!-- Stroke Settings -->
+          <div class="pt-4 border-t border-gray-100">
+            <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Stroke</h4>
+            <div class="space-y-3">
+              <app-color-picker 
+                label="Stroke Color" 
+                [color]="propertiesForm.get('strokeColor')?.value"
+                (colorChange)="propertiesForm.patchValue({strokeColor: $event})">
+              </app-color-picker>
+              
+              <div>
+                <div class="flex justify-between items-center mb-1">
+                  <label class="block text-xs text-gray-600">Stroke Width</label>
+                  <span class="text-xs text-gray-500">{{ propertiesForm.get('strokeWidthValue')?.value }}px</span>
+                </div>
+                <input 
+                  type="range" 
+                  formControlName="strokeWidthValue" 
+                  min="0" 
+                  max="20" 
+                  step="1"
+                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600">
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Switchboard Image Properties -->
+      <div *ngIf="isSwitchboardImage()">
+        <h3 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Switchboard Image</h3>
+        <div class="space-y-4">
+          
+          <!-- Contain / Cover Mode -->
+          <div class="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+            <div>
+              <label class="block text-xs font-medium text-gray-700">Contain Image</label>
+              <p class="text-xs text-gray-500 mt-0.5">Fit inside vs fill container</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                formControlName="contain"
+                class="sr-only peer">
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+
+          <!-- Horizontal Alignment -->
+          <div>
+            <label class="block text-xs text-gray-600 mb-2">Horizontal Alignment</label>
+            <div class="flex space-x-2">
+              <button 
+                type="button"
+                (click)="setHorizontalAlign('left')"
+                [class.bg-primary-600]="propertiesForm.get('horizontalAlign')?.value === 'left'"
+                [class.text-white]="propertiesForm.get('horizontalAlign')?.value === 'left'"
+                [class.bg-gray-100]="propertiesForm.get('horizontalAlign')?.value !== 'left'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="Align Left">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+              </button>
+              <button 
+                type="button"
+                (click)="setHorizontalAlign('center')"
+                [class.bg-primary-600]="propertiesForm.get('horizontalAlign')?.value === 'center'"
+                [class.text-white]="propertiesForm.get('horizontalAlign')?.value === 'center'"
+                [class.bg-gray-100]="propertiesForm.get('horizontalAlign')?.value !== 'center'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="Align Center">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h8M8 12h8M8 17h8" />
+                </svg>
+              </button>
+              <button 
+                type="button"
+                (click)="setHorizontalAlign('right')"
+                [class.bg-primary-600]="propertiesForm.get('horizontalAlign')?.value === 'right'"
+                [class.text-white]="propertiesForm.get('horizontalAlign')?.value === 'right'"
+                [class.bg-gray-100]="propertiesForm.get('horizontalAlign')?.value !== 'right'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="Align Right">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Vertical Alignment -->
+          <div>
+            <label class="block text-xs text-gray-600 mb-2">Vertical Alignment</label>
+            <div class="flex space-x-2">
+              <button 
+                type="button"
+                (click)="setVerticalAlign('top')"
+                [class.bg-primary-600]="propertiesForm.get('verticalAlignImage')?.value === 'top'"
+                [class.text-white]="propertiesForm.get('verticalAlignImage')?.value === 'top'"
+                [class.bg-gray-100]="propertiesForm.get('verticalAlignImage')?.value !== 'top'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="Align Top">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+              </button>
+              <button 
+                type="button"
+                (click)="setVerticalAlign('middle')"
+                [class.bg-primary-600]="propertiesForm.get('verticalAlignImage')?.value === 'middle'"
+                [class.text-white]="propertiesForm.get('verticalAlignImage')?.value === 'middle'"
+                [class.bg-gray-100]="propertiesForm.get('verticalAlignImage')?.value !== 'middle'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="Align Middle">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <button 
+                type="button"
+                (click)="setVerticalAlign('bottom')"
+                [class.bg-primary-600]="propertiesForm.get('verticalAlignImage')?.value === 'bottom'"
+                [class.text-white]="propertiesForm.get('verticalAlignImage')?.value === 'bottom'"
+                [class.bg-gray-100]="propertiesForm.get('verticalAlignImage')?.value !== 'bottom'"
+                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="Align Bottom">
+                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Background Color -->
+          <div>
+            <app-color-picker 
+              label="Background Color" 
+              [color]="propertiesForm.get('imageBackgroundColor')?.value"
+              (colorChange)="propertiesForm.patchValue({imageBackgroundColor: $event})">
+            </app-color-picker>
+          </div>
+
+          <!-- Background Opacity -->
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs text-gray-600">Background Opacity</label>
+              <span class="text-xs text-gray-500">{{ propertiesForm.get('imageBackgroundOpacity')?.value }}%</span>
+            </div>
+            <input 
+              type="range" 
+              formControlName="imageBackgroundOpacity" 
+              min="0" 
+              max="100" 
+              class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600">
+          </div>
+
+        </div>
+      </div>
+
+    </form>
+  </div>
+</div>

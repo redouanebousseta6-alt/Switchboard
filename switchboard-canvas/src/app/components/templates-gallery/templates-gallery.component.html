@@ -1,0 +1,144 @@
+<div class="min-h-screen bg-[#F9FAFB]">
+  
+  <!-- Modern Header -->
+  <header class="bg-[#111827] text-white py-12 px-8 mb-12 shadow-2xl relative overflow-hidden">
+    <!-- Abstract Background Shape -->
+    <div class="absolute top-[-50%] right-[-10%] w-[500px] h-[500px] bg-primary-600/20 rounded-full blur-[120px] pointer-events-none"></div>
+    <div class="absolute bottom-[-30%] left-[-5%] w-[300px] h-[300px] bg-blue-500/10 rounded-full blur-[80px] pointer-events-none"></div>
+
+    <div class="max-w-7xl mx-auto relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div>
+        <div class="flex items-center space-x-3 mb-4">
+          <div class="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-900/40">
+            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <span class="text-xl font-black uppercase tracking-tighter">Switchboard</span>
+        </div>
+        <h1 class="text-4xl md:text-5xl font-black text-white mb-3 tracking-tight">Canvas Studio</h1>
+        <p class="text-gray-400 text-lg font-medium max-w-xl">Design, manage, and automate your visual templates with ease.</p>
+      </div>
+      
+      <button 
+        (click)="createNewTemplate()"
+        class="bg-primary-600 hover:bg-primary-500 text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-xl shadow-primary-900/40 transition-all active:scale-95 flex items-center space-x-3 group">
+        <svg class="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+        </svg>
+        <span>New Template</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-8 pb-20">
+    
+    <!-- Section Title -->
+    <div class="flex items-center justify-between mb-8">
+      <h2 class="text-xl font-extrabold text-gray-900 flex items-center space-x-3">
+        <span>Recent Templates</span>
+        <span class="bg-gray-200 text-gray-600 text-xs px-2.5 py-1 rounded-full">{{ templates.length }}</span>
+      </h2>
+    </div>
+
+    <!-- Loading State -->
+    <div *ngIf="loading" class="flex flex-col items-center justify-center py-24">
+      <div class="w-16 h-16 border-4 border-gray-200 border-t-primary-600 rounded-full animate-spin mb-4"></div>
+      <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">Loading Studio...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div *ngIf="!loading && templates.length === 0" 
+      class="bg-white rounded-[32px] border-4 border-dashed border-gray-100 p-20 text-center flex flex-col items-center justify-center shadow-sm">
+      <div class="w-24 h-24 bg-gray-50 rounded-3xl flex items-center justify-center mb-6 text-gray-300">
+        <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+      </div>
+      <h3 class="text-2xl font-black text-gray-900 mb-2">Your canvas is empty</h3>
+      <p class="text-gray-500 font-medium mb-8 max-w-sm mx-auto">Get started by creating your first design template. It only takes a second.</p>
+      <button 
+        (click)="createNewTemplate()"
+        class="bg-gray-900 hover:bg-black text-white px-8 py-3.5 rounded-xl font-bold transition-all shadow-lg active:scale-95">
+        Create Template
+      </button>
+    </div>
+
+    <!-- Templates Grid -->
+    <div *ngIf="!loading && templates.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+      
+      <!-- New Template Card (Simplified as it's also in header) -->
+      <div 
+        (click)="createNewTemplate()"
+        class="group bg-white rounded-[2rem] border-2 border-dashed border-gray-200 hover:border-primary-500 hover:bg-primary-50/30 p-8 flex flex-col items-center justify-center min-h-[340px] transition-all cursor-pointer">
+        <div class="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-primary-100 group-hover:text-primary-600 transition-colors text-gray-400">
+          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+          </svg>
+        </div>
+        <h3 class="text-xl font-black text-gray-900">Add New</h3>
+        <p class="text-sm font-bold text-gray-400 mt-2 uppercase tracking-widest">Create Template</p>
+      </div>
+
+      <!-- Existing Templates -->
+      <div 
+        *ngFor="let template of templates"
+        (click)="openTemplate(template)"
+        class="group bg-white rounded-[2rem] shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 cursor-pointer overflow-hidden border border-gray-100 flex flex-col">
+        
+        <!-- Thumbnail Container -->
+        <div class="aspect-[4/3] bg-gray-100 relative overflow-hidden">
+          <img 
+            *ngIf="template.thumbnailUrl" 
+            [src]="template.thumbnailUrl" 
+            [alt]="template.displayName"
+            class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+          
+          <div *ngIf="!template.thumbnailUrl" class="w-full h-full flex items-center justify-center text-gray-300">
+            <svg class="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+
+          <!-- Overlay with Delete Button -->
+          <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-3">
+             <button 
+                (click)="deleteTemplate(template, $event)"
+                class="bg-red-500 hover:bg-red-600 text-white p-3 rounded-xl transition-all shadow-xl hover:scale-110 active:scale-90"
+                title="Delete Template">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+          </div>
+        </div>
+
+        <!-- Info Area -->
+        <div class="p-6">
+          <div class="flex items-start justify-between mb-2">
+            <h3 class="font-black text-gray-900 text-xl truncate pr-4">{{ template.displayName }}</h3>
+            <span class="bg-primary-50 text-primary-600 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md">Template</span>
+          </div>
+          <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6 truncate">{{ template.apiName }}</p>
+          
+          <div class="pt-4 border-t border-gray-50 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <div class="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center">
+                <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <span class="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{{ (template.updatedAt || template.createdDate) | date:'MMM d, h:mm a' }}</span>
+            </div>
+            <div class="text-primary-600 group-hover:translate-x-1 transition-transform">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+</div>

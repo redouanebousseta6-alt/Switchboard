@@ -1,0 +1,44 @@
+/* Layers Component Styles */
+
+/* Smooth hover transitions for layer items */
+.group button {
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* Drag-and-drop cursor */
+.cursor-move {
+  cursor: move;
+  cursor: grab;
+}
+
+.cursor-move:active {
+  cursor: grabbing;
+}
+
+/* Drag animation */
+[draggable="true"] {
+  transition: opacity 0.2s ease, border 0.2s ease;
+}
+
+/* Scrollbar styling for layers list */
+.overflow-y-auto {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 3px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}

@@ -1,0 +1,137 @@
+```
+PROBLEM: Why Generated Images Are White
+=========================================
+
+Your API Call                          Your Template
+-------------                          -------------
+{                                      Database contains:
+  "template": "template1",             - image-3  (switchboard-image)
+  "elements": {                        - image-4  (switchboard-image)
+    "image-1": {...},  ❌ NOT FOUND    - text-2   (switchboard-textbox)
+    "rect-1": {...},   ❌ NOT FOUND    - rect-5   (rect)
+    "image-2": {...}   ❌ NOT FOUND
+  }
+}
+
+Result: Nothing matches → White canvas
+
+
+SOLUTION: Use Correct Element Names
+====================================
+
+Your API Call                          Your Template
+-------------                          -------------
+{                                      Database contains:
+  "template": "template1",             - image-3  ✓ FOUND!
+  "elements": {                        - image-4  ✓ FOUND!
+    "image-3": {...},  ✅ MATCHED      - text-2   ✓ FOUND!
+    "image-4": {...},  ✅ MATCHED      - rect-5   (not overridden, uses default)
+    "text-2": {...}    ✅ MATCHED
+  }
+}
+
+Result: Elements updated → Beautiful image!
+
+
+HOW TO FIND THE CORRECT NAMES
+==============================
+
+Method 1: Use the Debugging Endpoint
+-------------------------------------
+GET http://localhost:3000/api/templates/template1
+
+Response:
+{
+  "success": true,
+  "elements": [
+    {"name": "image-3", "type": "switchboard-image"},
+    {"name": "image-4", "type": "switchboard-image"},
+    {"name": "text-2", "type": "switchboard-textbox"},
+    {"name": "rect-5", "type": "rect"}
+  ]
+}
+
+Method 2: Use the HTML Test Tool
+---------------------------------
+1. Open test-api.html
+2. Section 2 → Enter template name
+3. Click "Get Details"
+4. See all element names with types
+
+
+THE WORKFLOW
+============
+
+┌─────────────────────────────────────────────────────┐
+│ 1. DESIGN PHASE (Frontend Editor)                  │
+│                                                     │
+│  User creates template with:                       │
+│  - 2 images (auto-named: image-3, image-4)        │
+│  - 1 text box (auto-named: text-2)                │
+│  - 1 rectangle (auto-named: rect-5)               │
+│                                                     │
+│  User clicks "Publish" → Saves to backend DB      │
+└─────────────────────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────┐
+│ 2. DISCOVERY PHASE (Find Element Names)            │
+│                                                     │
+│  Call: GET /api/templates/template1                │
+│  Returns: List of all element names                │
+└─────────────────────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────┐
+│ 3. GENERATION PHASE (Create Images)                │
+│                                                     │
+│  POST /api/v1/generate                             │
+│  {                                                  │
+│    "template": "template1",                        │
+│    "elements": {                                    │
+│      "image-3": {"url": "..."},  ← CORRECT NAME    │
+│      "text-2": {"text": "..."}   ← CORRECT NAME    │
+│    }                                                │
+│  }                                                  │
+│                                                     │
+│  Backend:                                           │
+│  1. Loads template from DB                         │
+│  2. Launches headless browser                      │
+│  3. Finds "image-3" → Updates URL ✓               │
+│  4. Finds "text-2" → Updates text ✓               │
+│  5. Screenshots the result                         │
+│  6. Uploads to S3                                  │
+│  7. Returns image URL                              │
+└─────────────────────────────────────────────────────┘
+
+
+WHY NAMES ARE UNPREDICTABLE
+============================
+
+Fabric.js (the canvas library) names elements sequentially
+as they're added:
+
+Action                          Result
+------                          ------
+Add image                   →   image-1
+Add another image          →   image-2
+Add text                   →   text-1
+Delete image-1             →   (gone)
+Add new image              →   image-3  (NOT image-1!)
+Copy/paste image-3         →   image-4
+
+So the final template has:
+- image-2, image-3, image-4, text-1
+- NOT image-1, image-2, image-3 as you might expect!
+
+
+QUICK FIX CHECKLIST
+===================
+
+□ Backend is running (node server.js)
+□ Template is published from editor
+□ Call GET /api/templates/YOUR_NAME to get element names
+□ Update API payload with correct names
+□ Test with test-api.html tool
+□ Verify backend logs show "Overwrites applied successfully"
+□ No warnings about "Object not found"
+□ Images appear correctly
+```

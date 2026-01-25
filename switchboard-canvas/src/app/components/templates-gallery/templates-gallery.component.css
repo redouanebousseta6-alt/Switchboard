@@ -1,0 +1,35 @@
+:host {
+  display: block;
+}
+
+/* Custom shadow for cards */
+.group:hover {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
+}
+
+/* Smooth scaling for images */
+img {
+  backface-visibility: hidden;
+  -webkit-font-smoothing: subpixel-antialiased;
+}
+
+/* Tracking tighter for headings */
+h1, h2, h3 {
+  letter-spacing: -0.025em;
+}
+
+/* Custom selection color */
+::selection {
+  background: #2563eb;
+  color: white;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+main {
+  animation: fadeIn 0.6s ease-out forwards;
+}

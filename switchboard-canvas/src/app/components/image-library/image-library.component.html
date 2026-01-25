@@ -1,0 +1,61 @@
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4">
+  <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+    
+    <!-- Header -->
+    <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+      <h2 class="text-xl font-bold text-gray-800">Library</h2>
+      <div class="flex space-x-3">
+        <button (click)="triggerUnsplash()" class="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm font-semibold hover:bg-blue-100 flex items-center transition-colors">
+          <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M8.5 11V5h7v6h-7zm7 2h5v7h-17v-7h5v3h7v-3z"/></svg>
+          Unsplash
+        </button>
+        <button (click)="fileInput.click()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 flex items-center transition-colors shadow-sm">
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          Upload
+        </button>
+        <input #fileInput type="file" (change)="onFileSelected($event)" accept="image/*" class="hidden">
+        <button (click)="close.emit()" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+
+    <!-- Content Area -->
+    <div class="flex-1 overflow-y-auto p-6 bg-gray-50">
+      <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Images ({{ images.length }})</h3>
+      
+      <!-- Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <!-- Image Card -->
+        <div *ngFor="let img of images" 
+             (click)="selectImage(img)"
+             class="group relative aspect-square bg-white rounded-lg border border-gray-200 overflow-hidden cursor-pointer hover:border-blue-500 hover:ring-2 hover:ring-blue-200 transition-all shadow-sm">
+          <img [src]="img.url" class="w-full h-full object-contain p-2">
+          
+          <!-- Overlay on hover -->
+          <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-5 transition-all"></div>
+          
+          <!-- Delete button -->
+          <button (click)="deleteImage($event, img.id)" 
+                  class="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all shadow-md transform translate-y-1 group-hover:translate-y-0"
+                  title="Delete image">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Empty State -->
+        <div *ngIf="images.length === 0" class="col-span-full py-24 text-center text-gray-400">
+          <div class="bg-gray-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 011.414 0L15 16m-6-6h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <p class="text-sm font-medium">Your library is empty</p>
+          <p class="text-xs mt-1">Upload an image to get started</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
