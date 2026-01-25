@@ -10,7 +10,7 @@ RUN npm run build -- --configuration production
 FROM nginx:alpine
 # Copy the built Angular files
 COPY --from=build /app/dist/switchboard-canvas/browser /usr/share/nginx/html
-# Copy our custom Nginx config from the local folder
+# Copy our custom Nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
