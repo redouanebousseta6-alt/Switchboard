@@ -2,6 +2,8 @@ import { Component, EventEmitter, Input, Output, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NotificationService } from '../../services/notification.service';
 
+import { environment } from '../../environments/environment';
+
 @Component({
   selector: 'app-api-snippet',
   standalone: true,
@@ -38,9 +40,11 @@ export class ApiSnippetComponent implements OnInit {
 
     const jsonString = JSON.stringify(payload, null, 2);
     
-    // Updated to use the local backend URL we just created
+    // Use the backend URL from the environment
+    const apiUrl = `${environment.backendPublicUrl}/api/v1/generate`;
+    
     this.curlCommand = `curl --request POST \\
-  --url http://localhost:3000/api/v1/generate \\
+  --url ${apiUrl} \\
   --header 'Content-Type: application/json' \\
   --data '${jsonString}'`;
   }

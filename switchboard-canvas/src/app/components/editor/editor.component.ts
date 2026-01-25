@@ -170,7 +170,14 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       }
 
       const canvasData = await this.canvasService.serialize();
-      const thumbnail = await this.canvasService.generateThumbnail(300, 200);
+      let thumbnail = '';
+      try {
+        thumbnail = await this.canvasService.generateThumbnail(300, 200);
+      } catch (thumbError) {
+        console.warn('⚠️ Could not generate thumbnail (likely CORS/Tainted Canvas):', thumbError);
+        // Fallback to empty thumbnail or a placeholder if generation fails
+      }
+      
       const templateId = this.isNewTemplate ? `tpl-${Date.now()}` : this.templateId!;
       
       const template = {
