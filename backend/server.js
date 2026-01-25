@@ -10,8 +10,32 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Update CORS to allow requests from the frontend
+// Handle both with and without protocol in FRONTEND_URL
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:4200';
+const frontendOrigin = frontendUrl.startsWith('http') 
+  ? frontendUrl 
+  : `https://${frontendUrl}`;
+
+console.log('🌐 CORS configured for frontend:', frontendOrigin);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:4200',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow the configured frontend URL
+    if (origin === frontendOrigin || origin === frontendUrl || origin === `https://${frontendUrl}` || origin === `http://${frontendUrl}`) {
+      return callback(null, true);
+    }
+    
+    // Also allow localhost for development
+    if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
