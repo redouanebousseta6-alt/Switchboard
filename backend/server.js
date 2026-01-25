@@ -149,7 +149,12 @@ app.post('/api/v1/generate', async (req, res) => {
       // Set viewport to the requested size
       await page.setViewport({ width: size.width, height: size.height });
 
-      const rendererUrl = `${process.env.FRONTEND_URL}/render-headless`;
+      // Ensure the frontend URL has the protocol for Puppeteer
+      const frontendUrlForRender = process.env.FRONTEND_URL || 'http://localhost:4200';
+      const rendererUrl = frontendUrlForRender.startsWith('http') 
+        ? `${frontendUrlForRender}/render-headless`
+        : `https://${frontendUrlForRender}/render-headless`;
+      
       console.log(`🌐 Navigating to: ${rendererUrl}`);
       
       await page.goto(rendererUrl, { waitUntil: 'networkidle0' });
