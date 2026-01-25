@@ -101,7 +101,10 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       };
 
       await this.apiService.syncTemplate(templateData);
-      this.notificationService.success('Template synced to API successfully');
+      this.notificationService.success(
+        `Template synced to API successfully! API Name: "${templateData.apiName}"`
+      );
+      console.log('✅ Template published with API name:', templateData.apiName);
     } catch (error) {
       console.error('Sync error:', error);
       this.notificationService.error('Failed to sync to API. Make sure the backend server is running.');
