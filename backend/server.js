@@ -128,7 +128,11 @@ async function generateSingleImage(browser, template, elements, size, frontendUr
     
     console.log(`🌐 Navigating to: ${rendererUrl}`);
     
-    await page.goto(rendererUrl, { waitUntil: 'networkidle0' });
+    // Set navigation timeout to 30 seconds
+    await page.goto(rendererUrl, { 
+      waitUntil: 'networkidle0',
+      timeout: 30000 
+    });
 
     // WAIT FOR THE RENDER FUNCTION TO BE READY
     await page.waitForFunction(() => typeof window.renderDesign === 'function');
@@ -141,8 +145,10 @@ async function generateSingleImage(browser, template, elements, size, frontendUr
     }, template.configuration, elements || {}, size.width, size.height);
 
     // Wait for the renderer to signal completion and provide the image
+    // Increased timeout to 60 seconds for batch operations and slow image loading
     console.log('⏳ Waiting for signal: window.renderComplete === true');
-    await page.waitForFunction(() => window.renderComplete === true && window.renderedImage, { timeout: 20000 });
+    const RENDER_TIMEOUT = parseInt(process.env.RENDER_TIMEOUT || '60000'); // Default 60 seconds
+    await page.waitForFunction(() => window.renderComplete === true && window.renderedImage, { timeout: RENDER_TIMEOUT });
     
     console.log('📸 Retrieval complete, extracting image data...');
     const dataUrl = await page.evaluate(() => window.renderedImage);
@@ -183,6 +189,9 @@ async function generateSingleImage(browser, template, elements, size, frontendUr
  *    ]}
  * 
  * Batch mode allows generating 20+ images in one call by processing variations in parallel.
+ * 
+ * NOTE: Railway has a default HTTP timeout of 30 seconds. For large batches (>10 images),
+ * consider processing in smaller batches or increasing Railway's timeout in settings.
  */
 app.post('/api/v1/generate', async (req, res) => {
   const startTime = Date.now();
@@ -220,8 +229,8 @@ app.post('/api/v1/generate', async (req, res) => {
         console.log(`🔄 Batch mode: Processing ${variations.length} variations...`);
         
         // Process variations in parallel for better performance
-        // Limit concurrency to avoid overwhelming the system (max 5 parallel)
-        const MAX_CONCURRENT = 5;
+        // Limit concurrency to avoid overwhelming the system (max 3 parallel for stability)
+        const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_GENERATIONS || '3');
         const variationPromises = [];
         
         for (let i = 0; i < variations.length; i++) {
@@ -233,12 +242,15 @@ app.post('/api/v1/generate', async (req, res) => {
           for (const size of variationSizes) {
             const promise = generateSingleImage(browser, template, variationElements, size, frontendUrlForRender)
               .then(result => ({ ...result, variationIndex: i }))
-              .catch(err => ({
-                size: size,
-                success: false,
-                error: err.message,
-                variationIndex: i
-              }));
+              .catch(err => {
+                console.error(`❌ Error generating image for variation ${i}:`, err.message);
+                return {
+                  size: size,
+                  success: false,
+                  error: err.message || 'Generation failed',
+                  variationIndex: i
+                };
+              });
             
             variationPromises.push(promise);
             
