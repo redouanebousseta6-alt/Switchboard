@@ -11,7 +11,6 @@ import { SidebarComponent } from '../sidebar/sidebar.component';
 import { ImageLibraryComponent } from '../image-library/image-library.component';
 import { FontLibraryComponent } from '../font-library/font-library.component';
 import { LibraryComponent } from '../library/library.component';
-import { ApiRunnerComponent } from '../api-runner/api-runner.component';
 import { SwitchboardTextbox } from '../../editor/fabric/switchboard-textbox';
 import { FontService } from '../../services/font.service';
 import { NotificationService } from '../../services/notification.service';
@@ -31,7 +30,6 @@ import { ApiSnippetComponent } from '../api-snippet/api-snippet.component';
     ImageLibraryComponent,
     FontLibraryComponent,
     LibraryComponent,
-    ApiRunnerComponent,
     ApiSnippetComponent
   ],
   templateUrl: './editor.component.html',
@@ -47,7 +45,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   showImageLibrary = false;
   showFontLibrary = false;
   showLibrary = false;
-  showApiRunner = false;
   showApiSnippet = false;
   isSaving = false;
   apiElements: any = {};
@@ -90,11 +87,58 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   async syncToApi() {
     if (this.isSaving) return;
     
+    // First, save the template locally (merged Save logic)
+    if (!this.templateName || this.templateName.trim() === '') {
+      this.notificationService.error('Please enter a template name');
+      return;
+    }
+
+    this.isSaving = true;
     try {
-      this.isSaving = true;
+      // Save to local database first
+      const allTemplates = await this.db.getAllTemplates();
+      const duplicate = allTemplates.find(t => 
+        t.displayName.toLowerCase() === this.templateName.toLowerCase() && 
+        t.id !== this.templateId
+      );
+
+      if (duplicate) {
+        this.notificationService.error('A template with this name already exists');
+        this.isSaving = false;
+        return;
+      }
+
       const canvasData = await this.canvasService.serialize();
+      let thumbnail = '';
+      try {
+        thumbnail = await this.canvasService.generateThumbnail(300, 200);
+      } catch (thumbError) {
+        console.warn('⚠️ Could not generate thumbnail (likely CORS/Tainted Canvas):', thumbError);
+      }
+      
+      const templateId = this.isNewTemplate ? `tpl-${Date.now()}` : this.templateId!;
+      
+      const template = {
+        id: templateId,
+        displayName: this.templateName,
+        apiName: this.templateName.toLowerCase().replace(/\s+/g, '_'),
+        configuration: canvasData,
+        thumbnailUrl: thumbnail,
+        createdDate: this.isNewTemplate ? new Date() : (await this.db.getTemplate(templateId))?.createdDate || new Date(),
+        updatedAt: new Date()
+      };
+
+      await this.db.saveTemplate(template as any);
+      
+      if (this.isNewTemplate) {
+        this.isNewTemplate = false;
+        this.templateId = templateId;
+        this.router.navigate(['/editor', templateId]);
+      }
+
+      // Then sync to API
       const templateData = {
-        id: this.templateId || `tpl-${Date.now()}`,
+        id: templateId,
         displayName: this.templateName,
         apiName: this.templateName.toLowerCase().replace(/\s+/g, '_'),
         configuration: canvasData
@@ -102,12 +146,12 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
       await this.apiService.syncTemplate(templateData);
       this.notificationService.success(
-        `Template synced to API successfully! API Name: "${templateData.apiName}"`
+        `Template saved and published to API successfully! API Name: "${templateData.apiName}"`
       );
-      console.log('✅ Template published with API name:', templateData.apiName);
+      console.log('✅ Template saved and published with API name:', templateData.apiName);
     } catch (error) {
-      console.error('Sync error:', error);
-      this.notificationService.error('Failed to sync to API. Make sure the backend server is running.');
+      console.error('Save/Publish error:', error);
+      this.notificationService.error('Failed to save and publish template. Please try again.');
     } finally {
       this.isSaving = false;
     }
@@ -141,6 +185,9 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         // The canvas initialization happens in ngAfterViewInit, so we wait a bit
         setTimeout(async () => {
           await this.canvasService.loadFromJSON(template.configuration);
+          // Set zoom to 40% after loading template (only in editor mode)
+          this.canvasService.setZoom(0.4);
+          this.zoomLevel = 40;
         }, 200);
       } else {
         this.notificationService.error('Template not found');
@@ -152,63 +199,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  async saveTemplate() {
-    if (!this.templateName || this.templateName.trim() === '') {
-      this.notificationService.error('Please enter a template name');
-      return;
-    }
-
-    this.isSaving = true;
-    try {
-      const allTemplates = await this.db.getAllTemplates();
-      const duplicate = allTemplates.find(t => 
-        t.displayName.toLowerCase() === this.templateName.toLowerCase() && 
-        t.id !== this.templateId
-      );
-
-      if (duplicate) {
-        this.notificationService.error('A template with this name already exists');
-        this.isSaving = false;
-        return;
-      }
-
-      const canvasData = await this.canvasService.serialize();
-      let thumbnail = '';
-      try {
-        thumbnail = await this.canvasService.generateThumbnail(300, 200);
-      } catch (thumbError) {
-        console.warn('⚠️ Could not generate thumbnail (likely CORS/Tainted Canvas):', thumbError);
-        // Fallback to empty thumbnail or a placeholder if generation fails
-      }
-      
-      const templateId = this.isNewTemplate ? `tpl-${Date.now()}` : this.templateId!;
-      
-      const template = {
-        id: templateId,
-        displayName: this.templateName,
-        apiName: this.templateName.toLowerCase().replace(/\s+/g, '_'),
-        configuration: canvasData,
-        thumbnailUrl: thumbnail,
-        createdDate: this.isNewTemplate ? new Date() : (await this.db.getTemplate(templateId))?.createdDate || new Date(),
-        updatedAt: new Date()
-      };
-
-      await this.db.saveTemplate(template as any);
-      
-      if (this.isNewTemplate) {
-        this.isNewTemplate = false;
-        this.templateId = templateId;
-        this.router.navigate(['/editor', templateId]);
-      }
-      
-      this.notificationService.success('Template saved successfully');
-    } catch (error) {
-      console.error('❌ Error saving template:', error);
-      this.notificationService.error('Failed to save template. Please try again.');
-    } finally {
-      this.isSaving = false;
-    }
-  }
 
   async exportPNG() {
     try {
@@ -225,9 +215,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  toggleApiRunner() {
-    this.showApiRunner = !this.showApiRunner;
-  }
 
   async openApiSnippet() {
     const canvas = this.canvasService.getCanvas();

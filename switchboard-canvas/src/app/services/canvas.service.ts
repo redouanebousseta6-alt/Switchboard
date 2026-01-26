@@ -71,7 +71,13 @@ export class CanvasService {
       window.addEventListener('resize', () => this.centerDesignArea());
     }
     
-    setTimeout(() => this.centerDesignArea(), 300);
+    setTimeout(() => {
+      this.centerDesignArea();
+      // Set default zoom to 40% only in editor mode (not headless/API mode)
+      if (!this.isHeadlessMode) {
+        this.setZoom(0.4);
+      }
+    }, 300);
 
     return this.canvas;
   }
