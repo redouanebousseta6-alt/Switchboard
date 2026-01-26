@@ -163,6 +163,16 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       this.canvasService.initCanvas('fabric-canvas');
       this.canvasDimensions = this.canvasService.getCanvasDimensions();
       
+      // For new templates, ensure canvas is centered after initialization
+      if (this.isNewTemplate) {
+        // The initCanvas will set zoom to 40% and center automatically
+        // But we add an extra delay to ensure container is fully rendered
+        setTimeout(() => {
+          this.canvasService.setZoom(0.4);
+          this.zoomLevel = 40;
+        }, 400);
+      }
+      
       // Update zoom level display periodically (for Ctrl+Scroll)
       setInterval(() => {
         const currentZoom = this.canvasService.getZoom();
@@ -186,6 +196,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         setTimeout(async () => {
           await this.canvasService.loadFromJSON(template.configuration);
           // Set zoom to 40% after loading template (only in editor mode)
+          // The setZoom method will automatically center the canvas
           this.canvasService.setZoom(0.4);
           this.zoomLevel = 40;
         }, 200);

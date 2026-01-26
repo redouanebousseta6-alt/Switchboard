@@ -72,10 +72,13 @@ export class CanvasService {
     }
     
     setTimeout(() => {
-      this.centerDesignArea();
       // Set default zoom to 40% only in editor mode (not headless/API mode)
+      // The setZoom method will automatically center the canvas
       if (!this.isHeadlessMode) {
         this.setZoom(0.4);
+      } else {
+        // In headless mode, just center without zoom
+        this.centerDesignArea();
       }
     }, 300);
 
@@ -604,6 +607,11 @@ export class CanvasService {
     this.canvas.zoomToPoint(new fabric.Point(center.x, center.y), newZoom);
     
     this.zoomLevel = newZoom;
+    
+    // Re-center the design area after zoom change (only in editor mode)
+    if (!this.isHeadlessMode) {
+      setTimeout(() => this.centerDesignArea(), 50);
+    }
   }
   getZoom() { return this.zoomLevel; }
   resetZoomAndPan() {
@@ -653,29 +661,36 @@ export class CanvasService {
   centerDesignArea() {
     if (!this.canvas) return;
     
-    // Get the container dimensions
-    const container = this.canvas.getElement().parentElement;
-    if (!container) return;
+    // Use requestAnimationFrame to ensure container is fully rendered
+    requestAnimationFrame(() => {
+      if (!this.canvas) return;
+      
+      // Get the container dimensions
+      const container = this.canvas.getElement().parentElement;
+      if (!container) return;
 
-    const containerWidth = container.clientWidth || 800; // Fallback
-    const containerHeight = container.clientHeight || 600;
+      const containerWidth = container.clientWidth || 800; // Fallback
+      const containerHeight = container.clientHeight || 600;
 
-    // Design area center in workspace coordinates
-    const designCenter = {
-      x: this.canvasOffsetX + this.canvasWidth / 2,
-      y: this.canvasOffsetY + this.canvasHeight / 2
-    };
+      // Design area center in workspace coordinates
+      const designCenter = {
+        x: this.canvasOffsetX + this.canvasWidth / 2,
+        y: this.canvasOffsetY + this.canvasHeight / 2
+      };
 
-    // Calculate the transform to center the design area
-    // vpt[4] and vpt[5] are the pan offsets
-    const zoom = this.canvas.getZoom();
-    const vpt = this.canvas.viewportTransform!;
-    
-    vpt[4] = (containerWidth / 2) - (designCenter.x * zoom);
-    vpt[5] = (containerHeight / 2) - (designCenter.y * zoom);
-    
-    this.canvas.requestRenderAll();
-    console.log('🎯 Canvas centered');
+      // Calculate the transform to center the design area
+      // vpt[4] and vpt[5] are the pan offsets
+      const zoom = this.canvas.getZoom();
+      const vpt = this.canvas.viewportTransform!;
+      
+      if (vpt) {
+        vpt[4] = (containerWidth / 2) - (designCenter.x * zoom);
+        vpt[5] = (containerHeight / 2) - (designCenter.y * zoom);
+        
+        this.canvas.requestRenderAll();
+        console.log('🎯 Canvas centered at zoom:', Math.round(zoom * 100) + '%');
+      }
+    });
   }
 
   /**
