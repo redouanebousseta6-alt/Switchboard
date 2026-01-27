@@ -1,9 +1,14 @@
 /* Editor Styles */
 
-/* Infinite Workspace - Scrollable gray area */
+/* Infinite Workspace - Scrollable gray area; scrollbars hidden, pan/zoom via Fabric (Ctrl+scroll, Space+drag) */
 .workspace-scroll {
   cursor: default;
   position: relative;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.workspace-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 /* Canvas Container for Infinite Workspace */
