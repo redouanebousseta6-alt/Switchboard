@@ -108,70 +108,82 @@ app.get('/api/templates/:apiName', (req, res) => {
 });
 
 /**
- * Helper function to generate a single image
+ * Helper: create and initialize a Puppeteer page that is ready to render designs.
+ * We navigate to /render-headless ONCE per page and reuse it for multiple renders.
  */
-async function generateSingleImage(browser, template, elements, size, frontendUrlForRender) {
+async function createRendererPage(browser, frontendUrlForRender) {
   const page = await browser.newPage();
+
+  // LOG BROWSER ERRORS TO TERMINAL
+  page.on('console', msg => console.log('🌐 BROWSER LOG:', msg.text()));
+  page.on('pageerror', err => console.error('❌ BROWSER ERROR:', err.message));
+
+  // Ensure the frontend URL has the protocol for Puppeteer
+  const rendererUrl = frontendUrlForRender.startsWith('http') 
+    ? `${frontendUrlForRender}/render-headless`
+    : `https://${frontendUrlForRender}/render-headless`;
   
-  try {
-    // LOG BROWSER ERRORS TO TERMINAL
-    page.on('console', msg => console.log('🌐 BROWSER LOG:', msg.text()));
-    page.on('pageerror', err => console.error('❌ BROWSER ERROR:', err.message));
+  console.log(`🌐 Navigating to: ${rendererUrl}`);
+  
+  // Set navigation timeout to 30 seconds
+  await page.goto(rendererUrl, { 
+    waitUntil: 'networkidle0',
+    timeout: 30000 
+  });
 
-    // Set viewport to the requested size
-    await page.setViewport({ width: size.width, height: size.height });
+  // WAIT FOR THE RENDER FUNCTION TO BE READY
+  await page.waitForFunction(() => typeof window.renderDesign === 'function');
 
-    // Ensure the frontend URL has the protocol for Puppeteer
-    const rendererUrl = frontendUrlForRender.startsWith('http') 
-      ? `${frontendUrlForRender}/render-headless`
-      : `https://${frontendUrlForRender}/render-headless`;
-    
-    console.log(`🌐 Navigating to: ${rendererUrl}`);
-    
-    // Set navigation timeout to 30 seconds
-    await page.goto(rendererUrl, { 
-      waitUntil: 'networkidle0',
-      timeout: 30000 
-    });
+  console.log('🎨 Renderer page ready');
+  return page;
+}
 
-    // WAIT FOR THE RENDER FUNCTION TO BE READY
-    await page.waitForFunction(() => typeof window.renderDesign === 'function');
+/**
+ * Helper: render a single image on an already initialized page.
+ * This function is safe to call many times on the same page.
+ */
+async function renderImageOnPage(page, template, elements, size) {
+  // Set viewport to the requested size for this render
+  await page.setViewport({ width: size.width, height: size.height });
 
-    console.log('🎨 Starting render process...');
+  // Reset global flags before each render to avoid leaking state between runs
+  await page.evaluate(() => {
+    window.renderComplete = false;
+    window.renderedImage = null;
+  });
 
-    // Inject the design data into the headless page
-    await page.evaluate((config, overwrites, w, h) => {
-      window.renderDesign(config, overwrites, w, h);
-    }, template.configuration, elements || {}, size.width, size.height);
+  console.log(`🎨 Starting render process for ${size.width}x${size.height}...`);
 
-    // Wait for the renderer to signal completion and provide the image
-    // Increased timeout to 60 seconds for batch operations and slow image loading
-    console.log('⏳ Waiting for signal: window.renderComplete === true');
-    const RENDER_TIMEOUT = parseInt(process.env.RENDER_TIMEOUT || '60000'); // Default 60 seconds
-    await page.waitForFunction(() => window.renderComplete === true && window.renderedImage, { timeout: RENDER_TIMEOUT });
-    
-    console.log('📸 Retrieval complete, extracting image data...');
-    const dataUrl = await page.evaluate(() => window.renderedImage);
-    
-    if (!dataUrl) {
-      throw new Error('Failed to retrieve rendered image from canvas');
-    }
+  // Inject the design data into the headless page
+  await page.evaluate((config, overwrites, w, h) => {
+    window.renderDesign(config, overwrites, w, h);
+  }, template.configuration, elements || {}, size.width, size.height);
 
-    // Convert Base64 Data URL to Buffer
-    const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
-    const screenshotBuffer = Buffer.from(base64Data, 'base64');
-    
-    // Upload to S3
-    const s3Url = await uploadToS3(screenshotBuffer);
-
-    return {
-      size: { width: size.width, height: size.height },
-      success: true,
-      url: s3Url
-    };
-  } finally {
-    await page.close();
+  // Wait for the renderer to signal completion and provide the image
+  // Increased timeout to 60 seconds for batch operations and slow image loading
+  console.log('⏳ Waiting for signal: window.renderComplete === true');
+  const RENDER_TIMEOUT = parseInt(process.env.RENDER_TIMEOUT || '60000'); // Default 60 seconds
+  await page.waitForFunction(() => window.renderComplete === true && window.renderedImage, { timeout: RENDER_TIMEOUT });
+  
+  console.log('📸 Retrieval complete, extracting image data...');
+  const dataUrl = await page.evaluate(() => window.renderedImage);
+  
+  if (!dataUrl) {
+    throw new Error('Failed to retrieve rendered image from canvas');
   }
+
+  // Convert Base64 Data URL to Buffer
+  const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
+  const screenshotBuffer = Buffer.from(base64Data, 'base64');
+  
+  // Upload to S3
+  const s3Url = await uploadToS3(screenshotBuffer);
+
+  return {
+    size: { width: size.width, height: size.height },
+    success: true,
+    url: s3Url
+  };
 }
 
 /**
@@ -227,57 +239,76 @@ app.post('/api/v1/generate', async (req, res) => {
       if (variations && Array.isArray(variations)) {
         // BATCH MODE: Process multiple variations
         console.log(`🔄 Batch mode: Processing ${variations.length} variations...`);
-        
-        // Process variations in parallel for better performance
-        // Limit concurrency to avoid overwhelming the system (max 3 parallel for stability)
-        const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_GENERATIONS || '3');
-        const variationPromises = [];
-        
+
+        // Prepare flat list of jobs (variationIndex + size + elements)
+        const jobs = [];
         for (let i = 0; i < variations.length; i++) {
           const variation = variations[i];
           const variationSizes = variation.sizes || sizes || [{ width: 1080, height: 1080 }];
           const variationElements = variation.elements || elements || {};
-          
-          // For each variation, generate all requested sizes
           for (const size of variationSizes) {
-            const promise = generateSingleImage(browser, template, variationElements, size, frontendUrlForRender)
-              .then(result => ({ ...result, variationIndex: i }))
-              .catch(err => {
-                console.error(`❌ Error generating image for variation ${i}:`, err.message);
-                return {
-                  size: size,
-                  success: false,
-                  error: err.message || 'Generation failed',
-                  variationIndex: i
-                };
-              });
-            
-            variationPromises.push(promise);
-            
-            // Limit concurrent operations
-            if (variationPromises.length >= MAX_CONCURRENT) {
-              const results = await Promise.all(variationPromises);
-              allResults.push(...results);
-              variationPromises.length = 0; // Clear array
-            }
+            jobs.push({
+              variationIndex: i,
+              size,
+              elements: variationElements
+            });
           }
         }
-        
-        // Process remaining promises
-        if (variationPromises.length > 0) {
-          const results = await Promise.all(variationPromises);
-          allResults.push(...results);
+
+        // Process jobs in parallel using a small pool of reusable pages
+        const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_GENERATIONS || '3');
+        const workerCount = Math.min(MAX_CONCURRENT, jobs.length);
+        let jobIndex = 0;
+
+        const workers = [];
+        for (let w = 0; w < workerCount; w++) {
+          const workerPromise = (async () => {
+            const page = await createRendererPage(browser, frontendUrlForRender);
+            try {
+              // Each worker pulls jobs from the shared queue
+              // until there are no more jobs left
+              while (true) {
+                const currentIndex = jobIndex++;
+                if (currentIndex >= jobs.length) break;
+
+                const job = jobs[currentIndex];
+                try {
+                  const result = await renderImageOnPage(page, template, job.elements, job.size);
+                  allResults.push({ ...result, variationIndex: job.variationIndex });
+                } catch (err) {
+                  console.error(`❌ Error generating image for variation ${job.variationIndex}:`, err.message);
+                  allResults.push({
+                    size: job.size,
+                    success: false,
+                    error: err.message || 'Generation failed',
+                    variationIndex: job.variationIndex
+                  });
+                }
+              }
+            } finally {
+              await page.close();
+            }
+          })();
+          workers.push(workerPromise);
         }
-        
+
+        await Promise.all(workers);
+
         console.log(`✅ Batch generation complete: ${allResults.length} images generated`);
       } else {
         // SINGLE MODE: Backward compatible with existing API
         console.log('🔄 Single mode: Processing one set of elements...');
         const targetSizes = sizes || [{ width: 1080, height: 1080 }];
-        
-        for (const size of targetSizes) {
-          const result = await generateSingleImage(browser, template, elements, size, frontendUrlForRender);
-          allResults.push(result);
+
+        // Use a single reusable page for all sizes in this request
+        const page = await createRendererPage(browser, frontendUrlForRender);
+        try {
+          for (const size of targetSizes) {
+            const result = await renderImageOnPage(page, template, elements, size);
+            allResults.push(result);
+          }
+        } finally {
+          await page.close();
         }
       }
     } finally {
