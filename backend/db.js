@@ -1,7 +1,10 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const db = new Database(path.join(__dirname, 'switchboard.db'));
+// Use a configurable path so we can point SQLite at a Railway volume in production
+// Example on Railway: set DB_PATH=/data/switchboard.db and mount a volume at /data
+const dbFilePath = process.env.DB_PATH || path.join(__dirname, 'switchboard.db');
+const db = new Database(dbFilePath);
 
 // Initialize tables
 db.exec(`
