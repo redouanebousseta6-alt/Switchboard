@@ -16,7 +16,7 @@ const frontendOrigin = frontendUrl.startsWith('http')
   ? frontendUrl 
   : `https://${frontendUrl}`;
 
-console.log('🌐 CORS configured for frontend:', frontendOrigin);
+console.log('CORS configured for frontend:', frontendOrigin);
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -41,10 +41,265 @@ app.use(cors({
 }));
 app.use(bodyParser.json({ limit: '50mb' }));
 
-// --- API ROUTES ---
+// =============================================================================
+// PERSISTENT BROWSER POOL
+// =============================================================================
+// Instead of launching a new browser for every request (expensive, ~300-500MB),
+// we keep ONE browser alive and reuse it. Pages are created and destroyed per job.
+// =============================================================================
+
+let browserInstance = null;
+let browserLaunching = false;
+let browserLaunchPromise = null;
+
+const CHROME_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-web-security',            // Bypass CORS for loading images from any domain
+  '--allow-file-access-from-files',
+  '--disable-dev-shm-usage',           // CRITICAL for Docker: uses /tmp instead of /dev/shm
+  '--disable-gpu',                     // No GPU in containers
+  '--disable-extensions',
+  '--disable-background-networking',
+  '--disable-background-timer-throttling',
+  '--disable-backgrounding-occluded-windows',
+  '--disable-breakpad',
+  '--disable-component-update',
+  '--disable-default-apps',
+  '--disable-domain-reliability',
+  '--disable-hang-monitor',
+  '--disable-ipc-flooding-protection',
+  '--disable-popup-blocking',
+  '--disable-prompt-on-repost',
+  '--disable-renderer-backgrounding',
+  '--disable-sync',
+  '--disable-translate',
+  '--metrics-recording-only',
+  '--no-first-run',
+  '--safebrowsing-disable-auto-update',
+  '--single-process',                  // Reduce memory by running in single process
+  '--no-zygote',                       // Reduce memory on Linux containers
+];
 
 /**
- * Sync endpoint:Design app sends current template here to "publish" it to the API
+ * Get or launch the persistent browser instance.
+ * If the browser has crashed, it will be relaunched automatically.
+ */
+async function getBrowser() {
+  // If browser exists and is connected, return it
+  if (browserInstance && browserInstance.connected) {
+    return browserInstance;
+  }
+
+  // If another call is already launching, wait for it
+  if (browserLaunching && browserLaunchPromise) {
+    return browserLaunchPromise;
+  }
+
+  // Launch a new browser
+  browserLaunching = true;
+  browserLaunchPromise = (async () => {
+    try {
+      console.log('[Browser] Launching persistent browser...');
+      browserInstance = await puppeteer.launch({
+        headless: 'new',
+        args: CHROME_ARGS,
+        protocolTimeout: 120000, // 2 min protocol timeout
+      });
+
+      // Auto-recover if browser disconnects
+      browserInstance.on('disconnected', () => {
+        console.warn('[Browser] Browser disconnected! Will relaunch on next request.');
+        browserInstance = null;
+      });
+
+      console.log('[Browser] Persistent browser ready (PID:', browserInstance.process()?.pid, ')');
+      return browserInstance;
+    } catch (err) {
+      console.error('[Browser] Failed to launch browser:', err.message);
+      browserInstance = null;
+      throw err;
+    } finally {
+      browserLaunching = false;
+      browserLaunchPromise = null;
+    }
+  })();
+
+  return browserLaunchPromise;
+}
+
+// =============================================================================
+// REQUEST QUEUE
+// =============================================================================
+// Ensures only ONE batch is processed at a time, preventing memory spikes
+// from multiple concurrent browser operations.
+// =============================================================================
+
+class RequestQueue {
+  constructor() {
+    this.queue = [];
+    this.processing = false;
+  }
+
+  enqueue(task) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ task, resolve, reject });
+      this._processNext();
+    });
+  }
+
+  async _processNext() {
+    if (this.processing || this.queue.length === 0) return;
+
+    this.processing = true;
+    const { task, resolve, reject } = this.queue.shift();
+
+    try {
+      const result = await task();
+      resolve(result);
+    } catch (err) {
+      reject(err);
+    } finally {
+      this.processing = false;
+      // Process next item in queue
+      this._processNext();
+    }
+  }
+
+  get length() {
+    return this.queue.length;
+  }
+}
+
+const generateQueue = new RequestQueue();
+
+// =============================================================================
+// RENDERER PAGE MANAGEMENT
+// =============================================================================
+
+const RENDER_TIMEOUT = parseInt(process.env.RENDER_TIMEOUT || '60000');
+const NAV_TIMEOUT = parseInt(process.env.NAV_TIMEOUT || '45000');
+const MAX_NAV_RETRIES = 3;
+
+/**
+ * Create and initialize a Puppeteer page for rendering.
+ * Includes retry logic for navigation failures.
+ */
+async function createRendererPage(browser, frontendUrlForRender) {
+  const rendererUrl = frontendUrlForRender.startsWith('http') 
+    ? `${frontendUrlForRender}/render-headless`
+    : `https://${frontendUrlForRender}/render-headless`;
+
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= MAX_NAV_RETRIES; attempt++) {
+    let page = null;
+    try {
+      page = await browser.newPage();
+
+      // Limit page memory usage
+      await page.setCacheEnabled(false);
+
+      // Log browser errors for debugging
+      page.on('console', msg => {
+        if (msg.type() === 'error') {
+          console.log('[Page Console Error]', msg.text());
+        }
+      });
+      page.on('pageerror', err => console.error('[Page Error]', err.message));
+
+      console.log(`[Page] Navigating to ${rendererUrl} (attempt ${attempt}/${MAX_NAV_RETRIES})...`);
+      
+      await page.goto(rendererUrl, { 
+        waitUntil: 'networkidle0',
+        timeout: NAV_TIMEOUT 
+      });
+
+      // Wait for the Angular render function to be available
+      await page.waitForFunction(
+        () => typeof window.renderDesign === 'function',
+        { timeout: 15000 }
+      );
+
+      console.log('[Page] Renderer page ready');
+      return page;
+
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Page] Navigation attempt ${attempt} failed: ${err.message}`);
+      
+      // Close the failed page to free memory
+      if (page) {
+        try { await page.close(); } catch (_) {}
+      }
+
+      // Wait a bit before retrying (exponential backoff)
+      if (attempt < MAX_NAV_RETRIES) {
+        const delay = attempt * 2000;
+        console.log(`[Page] Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+
+  throw new Error(`Failed to create renderer page after ${MAX_NAV_RETRIES} attempts: ${lastError?.message}`);
+}
+
+/**
+ * Render a single image on an already-initialized page.
+ * Resets state between renders so the same page can be reused.
+ */
+async function renderImageOnPage(page, template, elements, size) {
+  // Set viewport to the requested size
+  await page.setViewport({ width: size.width, height: size.height });
+
+  // Reset global flags before each render
+  await page.evaluate(() => {
+    window.renderComplete = false;
+    window.renderedImage = null;
+  });
+
+  console.log(`[Render] Starting render ${size.width}x${size.height}...`);
+
+  // Inject the design data into the headless page
+  await page.evaluate((config, overwrites, w, h) => {
+    window.renderDesign(config, overwrites, w, h);
+  }, template.configuration, elements || {}, size.width, size.height);
+
+  // Wait for the renderer to signal completion
+  await page.waitForFunction(
+    () => window.renderComplete === true && window.renderedImage,
+    { timeout: RENDER_TIMEOUT }
+  );
+  
+  const dataUrl = await page.evaluate(() => window.renderedImage);
+  
+  if (!dataUrl) {
+    throw new Error('Failed to retrieve rendered image from canvas');
+  }
+
+  // Convert Base64 Data URL to Buffer
+  const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
+  const screenshotBuffer = Buffer.from(base64Data, 'base64');
+  
+  // Upload to S3
+  const s3Url = await uploadToS3(screenshotBuffer);
+
+  console.log(`[Render] Done ${size.width}x${size.height} -> ${s3Url}`);
+
+  return {
+    size: { width: size.width, height: size.height },
+    success: true,
+    url: s3Url
+  };
+}
+
+// =============================================================================
+// API ROUTES
+// =============================================================================
+
+/**
+ * Sync endpoint: Design app sends current template here to "publish" it
  */
 app.post('/api/templates/sync', (req, res) => {
   try {
@@ -53,10 +308,10 @@ app.post('/api/templates/sync', (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing template data' });
     }
     templates.save(template);
-    console.log(`✅ Template synced: ${template.apiName}`);
+    console.log(`Template synced: ${template.apiName}`);
     res.json({ success: true, message: 'Template synced to API backend' });
   } catch (err) {
-    console.error('❌ Sync Error:', err);
+    console.error('Sync Error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -69,7 +324,7 @@ app.get('/api/templates', (req, res) => {
     const allTemplates = templates.getAll();
     res.json({ success: true, templates: allTemplates });
   } catch (err) {
-    console.error('❌ Error:', err);
+    console.error('Error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -84,7 +339,6 @@ app.get('/api/templates/:apiName', (req, res) => {
       return res.status(404).json({ success: false, error: 'Template not found' });
     }
     
-    // Extract object names from the template
     const objects = template.configuration.objects || [];
     const elementNames = objects
       .filter(obj => !obj.isCanvasFrame && obj.name)
@@ -102,89 +356,23 @@ app.get('/api/templates/:apiName', (req, res) => {
       elements: elementNames
     });
   } catch (err) {
-    console.error('❌ Error:', err);
+    console.error('Error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 /**
- * Helper: create and initialize a Puppeteer page that is ready to render designs.
- * We navigate to /render-headless ONCE per page and reuse it for multiple renders.
+ * Health check endpoint
  */
-async function createRendererPage(browser, frontendUrlForRender) {
-  const page = await browser.newPage();
-
-  // LOG BROWSER ERRORS TO TERMINAL
-  page.on('console', msg => console.log('🌐 BROWSER LOG:', msg.text()));
-  page.on('pageerror', err => console.error('❌ BROWSER ERROR:', err.message));
-
-  // Ensure the frontend URL has the protocol for Puppeteer
-  const rendererUrl = frontendUrlForRender.startsWith('http') 
-    ? `${frontendUrlForRender}/render-headless`
-    : `https://${frontendUrlForRender}/render-headless`;
-  
-  console.log(`🌐 Navigating to: ${rendererUrl}`);
-  
-  // Set navigation timeout to 30 seconds
-  await page.goto(rendererUrl, { 
-    waitUntil: 'networkidle0',
-    timeout: 30000 
-  });
-
-  // WAIT FOR THE RENDER FUNCTION TO BE READY
-  await page.waitForFunction(() => typeof window.renderDesign === 'function');
-
-  console.log('🎨 Renderer page ready');
-  return page;
-}
-
-/**
- * Helper: render a single image on an already initialized page.
- * This function is safe to call many times on the same page.
- */
-async function renderImageOnPage(page, template, elements, size) {
-  // Set viewport to the requested size for this render
-  await page.setViewport({ width: size.width, height: size.height });
-
-  // Reset global flags before each render to avoid leaking state between runs
-  await page.evaluate(() => {
-    window.renderComplete = false;
-    window.renderedImage = null;
-  });
-
-  console.log(`🎨 Starting render process for ${size.width}x${size.height}...`);
-
-  // Inject the design data into the headless page
-  await page.evaluate((config, overwrites, w, h) => {
-    window.renderDesign(config, overwrites, w, h);
-  }, template.configuration, elements || {}, size.width, size.height);
-
-  // Wait for the renderer to signal completion and provide the image
-  // Increased timeout to 60 seconds for batch operations and slow image loading
-  console.log('⏳ Waiting for signal: window.renderComplete === true');
-  const RENDER_TIMEOUT = parseInt(process.env.RENDER_TIMEOUT || '60000'); // Default 60 seconds
-  await page.waitForFunction(() => window.renderComplete === true && window.renderedImage, { timeout: RENDER_TIMEOUT });
-  
-  console.log('📸 Retrieval complete, extracting image data...');
-  const dataUrl = await page.evaluate(() => window.renderedImage);
-  
-  if (!dataUrl) {
-    throw new Error('Failed to retrieve rendered image from canvas');
-  }
-
-  // Convert Base64 Data URL to Buffer
-  const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
-  const screenshotBuffer = Buffer.from(base64Data, 'base64');
-  
-  // Upload to S3
-  const s3Url = await uploadToS3(screenshotBuffer);
-
-  return {
-    size: { width: size.width, height: size.height },
+app.get('/api/health', (req, res) => {
+  res.json({
     success: true,
-    url: s3Url
-  };
-}
+    browserConnected: browserInstance?.connected || false,
+    queueLength: generateQueue.length,
+    uptime: process.uptime(),
+    memoryUsage: Math.round(process.memoryUsage().rss / 1024 / 1024) + 'MB'
+  });
+});
 
 /**
  * Generate endpoint: The core Switchboard-style API
@@ -193,17 +381,15 @@ async function renderImageOnPage(page, template, elements, size) {
  * 1. Single generation (backward compatible):
  *    { template: "name", sizes: [...], elements: {...} }
  * 
- * 2. Batch generation (new):
+ * 2. Batch generation:
  *    { template: "name", variations: [
  *      { sizes: [...], elements: {...} },
  *      { sizes: [...], elements: {...} },
  *      ...
  *    ]}
  * 
- * Batch mode allows generating 20+ images in one call by processing variations in parallel.
- * 
- * NOTE: Railway has a default HTTP timeout of 30 seconds. For large batches (>10 images),
- * consider processing in smaller batches or increasing Railway's timeout in settings.
+ * All jobs are processed SEQUENTIALLY on a single page to minimize memory usage.
+ * Requests are queued so only one batch runs at a time.
  */
 app.post('/api/v1/generate', async (req, res) => {
   const startTime = Date.now();
@@ -213,122 +399,36 @@ app.post('/api/v1/generate', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Template apiName is required' });
   }
 
+  // Check template exists BEFORE entering the queue (fast fail)
+  const template = templates.getByApiName(apiName);
+  if (!template) {
+    return res.status(404).json({ success: false, error: `Template "${apiName}" not found` });
+  }
+
+  const queuePos = generateQueue.length;
+  if (queuePos > 0) {
+    console.log(`[Queue] Request queued at position ${queuePos}`);
+  }
+
   try {
-    // 1. Get template from database
-    const template = templates.getByApiName(apiName);
-    if (!template) {
-      return res.status(404).json({ success: false, error: `Template "${apiName}" not found` });
-    }
-
-    // 2. Launch Headless Browser (reused for all generations)
-    const browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox',
-        '--disable-web-security', // BYPASS CORS: Allows loading images from any domain
-        '--allow-file-access-from-files'
-      ]
+    // All generation work happens inside the queue (one at a time)
+    const result = await generateQueue.enqueue(async () => {
+      return await processGenerateRequest(template, sizes, elements, variations);
     });
-
-    const frontendUrlForRender = process.env.FRONTEND_URL || 'http://localhost:4200';
-    const allResults = [];
-
-    try {
-      // Check if this is batch mode (variations array) or single mode (backward compatible)
-      if (variations && Array.isArray(variations)) {
-        // BATCH MODE: Process multiple variations
-        console.log(`🔄 Batch mode: Processing ${variations.length} variations...`);
-
-        // Prepare flat list of jobs (variationIndex + size + elements)
-        const jobs = [];
-        for (let i = 0; i < variations.length; i++) {
-          const variation = variations[i];
-          const variationSizes = variation.sizes || sizes || [{ width: 1080, height: 1080 }];
-          const variationElements = variation.elements || elements || {};
-          for (const size of variationSizes) {
-            jobs.push({
-              variationIndex: i,
-              size,
-              elements: variationElements
-            });
-          }
-        }
-
-        // Process jobs in parallel using a small pool of reusable pages
-        const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_GENERATIONS || '3');
-        const workerCount = Math.min(MAX_CONCURRENT, jobs.length);
-        let jobIndex = 0;
-
-        const workers = [];
-        for (let w = 0; w < workerCount; w++) {
-          const workerPromise = (async () => {
-            const page = await createRendererPage(browser, frontendUrlForRender);
-            try {
-              // Each worker pulls jobs from the shared queue
-              // until there are no more jobs left
-              while (true) {
-                const currentIndex = jobIndex++;
-                if (currentIndex >= jobs.length) break;
-
-                const job = jobs[currentIndex];
-                try {
-                  const result = await renderImageOnPage(page, template, job.elements, job.size);
-                  allResults.push({ ...result, variationIndex: job.variationIndex });
-                } catch (err) {
-                  console.error(`❌ Error generating image for variation ${job.variationIndex}:`, err.message);
-                  allResults.push({
-                    size: job.size,
-                    success: false,
-                    error: err.message || 'Generation failed',
-                    variationIndex: job.variationIndex
-                  });
-                }
-              }
-            } finally {
-              await page.close();
-            }
-          })();
-          workers.push(workerPromise);
-        }
-
-        await Promise.all(workers);
-
-        console.log(`✅ Batch generation complete: ${allResults.length} images generated`);
-      } else {
-        // SINGLE MODE: Backward compatible with existing API
-        console.log('🔄 Single mode: Processing one set of elements...');
-        const targetSizes = sizes || [{ width: 1080, height: 1080 }];
-
-        // Use a single reusable page for all sizes in this request
-        const page = await createRendererPage(browser, frontendUrlForRender);
-        try {
-          for (const size of targetSizes) {
-            const result = await renderImageOnPage(page, template, elements, size);
-            allResults.push(result);
-          }
-        } finally {
-          await page.close();
-        }
-      }
-    } finally {
-      await browser.close();
-    }
 
     const duration = Date.now() - startTime;
 
-    // 5. Return Switchboard-compatible response
     res.json({
       duration,
       usage: true,
       success: true,
       warnings: [],
-      sizes: allResults,
-      count: allResults.length
+      sizes: result,
+      count: result.length
     });
 
   } catch (err) {
-    console.error('❌ Generation Error:', err);
+    console.error('Generation Error:', err.message);
     let message = err.message || String(err);
     if (message.includes('credential') || message.includes('Credentials')) {
       message = 'R2 credentials invalid. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in Railway (Backend Variables). Use Cloudflare R2 API token. See RAILWAY_CHECKLIST.md.';
@@ -341,6 +441,131 @@ app.post('/api/v1/generate', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`🚀 Switchboard API Backend running at http://localhost:${port}`);
+/**
+ * Core generation logic, separated from the HTTP handler.
+ * Processes all jobs SEQUENTIALLY on a single reusable page.
+ */
+async function processGenerateRequest(template, sizes, elements, variations) {
+  const browser = await getBrowser();
+  const frontendUrlForRender = process.env.FRONTEND_URL || 'http://localhost:4200';
+  const allResults = [];
+
+  // Build flat list of jobs
+  const jobs = [];
+  if (variations && Array.isArray(variations)) {
+    console.log(`[Generate] Batch mode: ${variations.length} variations`);
+    for (let i = 0; i < variations.length; i++) {
+      const variation = variations[i];
+      const variationSizes = variation.sizes || sizes || [{ width: 1080, height: 1080 }];
+      const variationElements = variation.elements || elements || {};
+      for (const size of variationSizes) {
+        jobs.push({ variationIndex: i, size, elements: variationElements });
+      }
+    }
+  } else {
+    console.log('[Generate] Single mode');
+    const targetSizes = sizes || [{ width: 1080, height: 1080 }];
+    for (const size of targetSizes) {
+      jobs.push({ variationIndex: 0, size, elements: elements || {} });
+    }
+  }
+
+  console.log(`[Generate] Total jobs: ${jobs.length}`);
+
+  // Create ONE page, process ALL jobs sequentially on it
+  // This is much more memory-efficient than parallel pages
+  let page = null;
+  try {
+    page = await createRendererPage(browser, frontendUrlForRender);
+
+    for (let i = 0; i < jobs.length; i++) {
+      const job = jobs[i];
+      console.log(`[Generate] Processing job ${i + 1}/${jobs.length}...`);
+
+      try {
+        const result = await renderImageOnPage(page, template, job.elements, job.size);
+        allResults.push({
+          ...result,
+          ...(variations ? { variationIndex: job.variationIndex } : {})
+        });
+      } catch (err) {
+        console.error(`[Generate] Job ${i + 1} failed: ${err.message}`);
+        allResults.push({
+          size: job.size,
+          success: false,
+          error: err.message || 'Generation failed',
+          ...(variations ? { variationIndex: job.variationIndex } : {})
+        });
+
+        // If the page crashed, try to recover with a fresh page
+        if (err.message.includes('Target closed') || 
+            err.message.includes('Session closed') ||
+            err.message.includes('Protocol error') ||
+            err.message.includes('Navigation failed')) {
+          console.warn('[Generate] Page seems dead, creating a fresh one...');
+          try { await page.close(); } catch (_) {}
+          
+          // Re-get browser in case it crashed too
+          const freshBrowser = await getBrowser();
+          page = await createRendererPage(freshBrowser, frontendUrlForRender);
+        }
+      }
+    }
+  } finally {
+    // Always close the page to free memory
+    if (page) {
+      try { await page.close(); } catch (_) {}
+    }
+  }
+
+  console.log(`[Generate] Complete: ${allResults.filter(r => r.success).length}/${allResults.length} succeeded`);
+  return allResults;
+}
+
+// =============================================================================
+// GLOBAL ERROR HANDLING - Prevent server crashes
+// =============================================================================
+
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err.message);
+  console.error(err.stack);
+  // Don't exit - try to keep serving
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled Rejection:', reason);
+  // Don't exit - try to keep serving
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('[Shutdown] SIGTERM received, closing browser...');
+  if (browserInstance) {
+    try { await browserInstance.close(); } catch (_) {}
+  }
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('[Shutdown] SIGINT received, closing browser...');
+  if (browserInstance) {
+    try { await browserInstance.close(); } catch (_) {}
+  }
+  process.exit(0);
+});
+
+// =============================================================================
+// START SERVER & PRE-WARM BROWSER
+// =============================================================================
+
+app.listen(port, async () => {
+  console.log(`Switchboard API Backend running at http://localhost:${port}`);
+  
+  // Pre-warm the browser on startup so the first request is fast
+  try {
+    await getBrowser();
+    console.log('[Startup] Browser pre-warmed and ready');
+  } catch (err) {
+    console.warn('[Startup] Browser pre-warm failed (will retry on first request):', err.message);
+  }
 });
