@@ -122,6 +122,7 @@ export class CanvasService {
       if (e.code === 'Space' && !this.spacePressed) {
         const target = e.target as HTMLElement;
         if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+          e.preventDefault(); // Prevent browser from scrolling the page
           this.spacePressed = true;
           this.canvas.defaultCursor = 'grab';
           this.canvas.selection = false;
@@ -223,6 +224,7 @@ export class CanvasService {
 
     window.addEventListener('keyup', (e: KeyboardEvent) => {
       if (e.code === 'Space') {
+        e.preventDefault();
         this.spacePressed = false;
         if (this.canvas) {
           this.canvas.defaultCursor = 'default';
