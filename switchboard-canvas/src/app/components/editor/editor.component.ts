@@ -188,13 +188,39 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   async loadTemplate(id: string) {
     try {
-      const template = await this.db.getTemplate(id);
+      let template = await this.db.getTemplate(id);
+
+      // If not found locally, try fetching from backend by ID
+      if (!template) {
+        console.log('Template not in local DB, fetching from backend...');
+        try {
+          const response = await this.apiService.getAllTemplates();
+          if (response?.success && response?.templates) {
+            const backendTemplate = response.templates.find((t: any) => t.id === id);
+            if (backendTemplate) {
+              template = {
+                id: backendTemplate.id,
+                displayName: backendTemplate.display_name,
+                apiName: backendTemplate.api_name,
+                configuration: backendTemplate.configuration,
+                createdDate: new Date(backendTemplate.created_at),
+                updatedAt: backendTemplate.updated_at ? new Date(backendTemplate.updated_at) : undefined,
+              };
+              // Save to local DB for future access
+              await this.db.saveTemplate(template as any);
+            }
+          }
+        } catch (apiError) {
+          console.warn('Could not fetch template from backend:', apiError);
+        }
+      }
+
       if (template) {
         console.log('Loaded template:', template);
         this.templateName = template.displayName;
         // The canvas initialization happens in ngAfterViewInit, so we wait a bit
         setTimeout(async () => {
-          await this.canvasService.loadFromJSON(template.configuration);
+          await this.canvasService.loadFromJSON(template!.configuration);
           // Set zoom to 40% after loading template (only in editor mode)
           // The setZoom method will automatically center the canvas
           this.canvasService.setZoom(0.4);

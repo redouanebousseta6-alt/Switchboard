@@ -47,8 +47,11 @@ const templates = {
   },
 
   getAll: () => {
-    const stmt = db.prepare('SELECT id, api_name, display_name, created_at FROM templates');
-    return stmt.all();
+    const stmt = db.prepare('SELECT id, api_name, display_name, configuration, created_at, updated_at FROM templates ORDER BY updated_at DESC');
+    return stmt.all().map(row => {
+      if (row.configuration) row.configuration = JSON.parse(row.configuration);
+      return row;
+    });
   }
 };
 
