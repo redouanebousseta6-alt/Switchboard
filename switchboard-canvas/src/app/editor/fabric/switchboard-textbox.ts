@@ -65,8 +65,11 @@ export class SwitchboardTextbox extends fabric.Textbox {
     // Event listeners
     const self = this as any;
     
-    // Live resize feedback
+    // Live resize feedback (corner + top/bottom handles change scaleX/scaleY)
     self.on('scaling', (e: any) => this._onScaling(e));
+
+    // Left/right handles change width directly (not scaleX), so listen to 'resizing'
+    self.on('resizing', (e: any) => this._onResizing(e));
     
     self.on('changed', () => {
       if (this.fillTextBox && this.isEditing) {
@@ -125,6 +128,20 @@ export class SwitchboardTextbox extends fabric.Textbox {
     });
 
     // Immediate auto-fit if enabled
+    if (this.fillTextBox) {
+      this.fitTextToBox();
+    }
+
+    this.dirty = true;
+  }
+
+  /**
+   * Handle left/right (ml/mr) resize controls.
+   * These controls change width directly without affecting scaleX.
+   */
+  private _onResizing(e: any): void {
+    this.fixedWidth = this.width;
+
     if (this.fillTextBox) {
       this.fitTextToBox();
     }
