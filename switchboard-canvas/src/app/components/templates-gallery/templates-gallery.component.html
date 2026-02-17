@@ -87,12 +87,12 @@
         class="group bg-white rounded-[2rem] shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 cursor-pointer overflow-hidden border border-gray-100 flex flex-col">
         
         <!-- Thumbnail Container -->
-        <div class="aspect-[4/3] bg-gray-100 relative overflow-hidden">
+        <div class="aspect-[3/4] bg-gray-50 relative overflow-hidden flex items-center justify-center">
           <img 
             *ngIf="template.thumbnailUrl" 
             [src]="template.thumbnailUrl" 
             [alt]="template.displayName"
-            class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+            class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" />
           
           <div *ngIf="!template.thumbnailUrl" class="w-full h-full flex items-center justify-center text-gray-300">
             <svg class="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
