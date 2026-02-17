@@ -84,6 +84,43 @@ export class TemplatesGalleryComponent implements OnInit {
     this.router.navigate(['/editor', template.id]);
   }
 
+  async duplicateTemplate(template: Template, event: Event) {
+    event.stopPropagation();
+
+    try {
+      // Generate a unique display name (e.g., "Template-1 (Copy)", "Template-1 (Copy 2)")
+      const allTemplates = await this.db.getAllTemplates();
+      const baseName = template.displayName.replace(/\s*\(Copy(?:\s\d+)?\)$/, '');
+      let copyNumber = 1;
+      let newName = `${baseName} (Copy)`;
+
+      const existingNames = new Set(allTemplates.map(t => t.displayName.toLowerCase()));
+      while (existingNames.has(newName.toLowerCase())) {
+        copyNumber++;
+        newName = `${baseName} (Copy ${copyNumber})`;
+      }
+
+      const newId = `tpl-${Date.now()}`;
+      const duplicate: Template = {
+        id: newId,
+        displayName: newName,
+        apiName: newName.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, ''),
+        configuration: JSON.parse(JSON.stringify(template.configuration)),
+        thumbnailUrl: template.thumbnailUrl,
+        createdDate: new Date(),
+        updatedAt: new Date(),
+      };
+
+      // Save only to local IndexedDB -- NOT synced to backend until user hits Save in editor
+      await this.db.saveTemplate(duplicate);
+      await this.loadTemplates();
+      this.notificationService.success(`Duplicated as "${newName}". Open it and hit Save to publish.`);
+    } catch (error) {
+      console.error('Error duplicating template:', error);
+      this.notificationService.error('Failed to duplicate template');
+    }
+  }
+
   async deleteTemplate(template: Template, event: Event) {
     event.stopPropagation();
     
