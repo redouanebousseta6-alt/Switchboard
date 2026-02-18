@@ -327,7 +327,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       width: 200,
       height: 100,
       fill: '#cccccc',
-      stroke: 'transparent',
+      stroke: null,
       strokeWidth: 0,
       rx: 0,
       ry: 0,

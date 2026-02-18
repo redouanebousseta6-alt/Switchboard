@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy, Output, EventEmitter } from '@angular/cor
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup } from '@angular/forms';
 import { Subscription } from 'rxjs';
+import * as fabric from 'fabric';
 import { CanvasService } from '../../services/canvas.service';
 
 import { ColorPickerComponent } from '../color-picker/color-picker.component';
@@ -42,7 +43,7 @@ export class PropertiesComponent implements OnInit, OnDestroy {
       // Rectangle-specific
       radius: [0],
       fill: ['#3B82F6'],
-      stroke: ['transparent'],
+      stroke: ['#000000'],
       strokeWidth: [0],
       
       // Text-specific
@@ -63,6 +64,12 @@ export class PropertiesComponent implements OnInit, OnDestroy {
       textTransform: ['none'],
       strokeColor: ['transparent'],
       strokeWidthValue: [0],
+
+      // Shadow (shared across rect + text)
+      shadowColor: ['#000000'],
+      shadowOffsetX: [0],
+      shadowOffsetY: [0],
+      shadowBlur: [0],
 
       // Switchboard Image-specific
       horizontalAlign: ['center'],
@@ -179,7 +186,7 @@ export class PropertiesComponent implements OnInit, OnDestroy {
       // Rectangle properties
       radius: Math.round(object.rx || 0),
       fill: ensureValidColor(object.fill, '#3B82F6'),
-      stroke: ensureValidColor(object.stroke, 'transparent'),
+      stroke: ensureValidColor(object.stroke !== 'transparent' ? object.stroke : null, '#000000'),
       strokeWidth: object.strokeWidth ?? 0,
       
       // Text properties
@@ -200,6 +207,12 @@ export class PropertiesComponent implements OnInit, OnDestroy {
       textTransform: isSwitchboardTextbox ? (object.textTransform || 'none') : 'none',
       strokeColor: isSwitchboardTextbox ? (object.strokeColor || 'transparent') : 'transparent',
       strokeWidthValue: isSwitchboardTextbox ? (object.strokeWidthValue || 0) : 0,
+
+      // Shadow properties (shared)
+      shadowColor: object.shadow?.color || '#000000',
+      shadowOffsetX: object.shadow?.offsetX ?? 0,
+      shadowOffsetY: object.shadow?.offsetY ?? 0,
+      shadowBlur: object.shadow?.blur ?? 0,
 
       // Switchboard Image properties
       horizontalAlign: isSwitchboardImage ? (object.horizontalAlign || 'center') : 'center',
@@ -229,13 +242,25 @@ export class PropertiesComponent implements OnInit, OnDestroy {
       opacity: values.opacity / 100,
     });
 
+    // Shadow (shared across all object types)
+    if (values.shadowBlur > 0 || values.shadowOffsetX !== 0 || values.shadowOffsetY !== 0) {
+      this.selectedObject.set('shadow', new fabric.Shadow({
+        color: values.shadowColor || 'rgba(0,0,0,0.5)',
+        offsetX: values.shadowOffsetX || 0,
+        offsetY: values.shadowOffsetY || 0,
+        blur: values.shadowBlur || 0,
+      }));
+    } else {
+      this.selectedObject.set('shadow', null);
+    }
+
     // Rectangle-specific properties
     if (this.selectedObject.type === 'rect') {
       this.selectedObject.set({
         rx: values.radius,
         ry: values.radius,
         fill: values.fill,
-        stroke: values.stroke,
+        stroke: values.strokeWidth > 0 ? values.stroke : null,
         strokeWidth: values.strokeWidth,
       });
     }
