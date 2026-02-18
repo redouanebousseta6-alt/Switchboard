@@ -41,7 +41,11 @@ export class FontService {
       { name: 'Soul Daisy', path: 'soul-daisy/SoulDaisy.otf' },
       { name: 'Violleva', path: 'violleva/Violleva.ttf' },
       { name: 'Waterlily', path: 'waterlily/Waterlily Script.ttf' },
-      { name: 'White Colors', path: 'white-colors/WhiteColors-xRRgR.ttf' }
+      { name: 'White Colors', path: 'white-colors/WhiteColors-xRRgR.ttf' },
+      { name: 'Gilroy Black', path: 'gilroy/Gilroy-Black.ttf' },
+      { name: 'Helvetica Now Display ExtBlk', path: 'helvetica-now-display/HelveticaNowDisplay-ExtBlk.ttf' },
+      { name: 'Noctis Heavy', path: 'noctis/Noctis-Heavy.ttf' },
+      { name: 'Recoleta Bold', path: 'recoleta/Recoleta-Bold.ttf' },
     ];
 
     console.log('🔄 Syncing public fonts...');

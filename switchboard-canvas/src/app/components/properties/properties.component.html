@@ -327,6 +327,43 @@
               </button>
             </div>
           </div>
+
+          <!-- Text Transform (only for SwitchboardTextbox) -->
+          <div *ngIf="isSwitchboardTextbox()">
+            <label class="block text-xs text-gray-600 mb-2">Text Transform</label>
+            <div class="flex space-x-2">
+              <button 
+                type="button"
+                (click)="setTextTransform('none')"
+                [class.bg-primary-600]="propertiesForm.get('textTransform')?.value === 'none'"
+                [class.text-white]="propertiesForm.get('textTransform')?.value === 'none'"
+                [class.bg-gray-100]="propertiesForm.get('textTransform')?.value !== 'none'"
+                class="flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="No Transform">
+                Aa
+              </button>
+              <button 
+                type="button"
+                (click)="setTextTransform('uppercase')"
+                [class.bg-primary-600]="propertiesForm.get('textTransform')?.value === 'uppercase'"
+                [class.text-white]="propertiesForm.get('textTransform')?.value === 'uppercase'"
+                [class.bg-gray-100]="propertiesForm.get('textTransform')?.value !== 'uppercase'"
+                class="flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="Uppercase">
+                AA
+              </button>
+              <button 
+                type="button"
+                (click)="setTextTransform('lowercase')"
+                [class.bg-primary-600]="propertiesForm.get('textTransform')?.value === 'lowercase'"
+                [class.text-white]="propertiesForm.get('textTransform')?.value === 'lowercase'"
+                [class.bg-gray-100]="propertiesForm.get('textTransform')?.value !== 'lowercase'"
+                class="flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors hover:bg-primary-500 hover:text-white"
+                title="Lowercase">
+                aa
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

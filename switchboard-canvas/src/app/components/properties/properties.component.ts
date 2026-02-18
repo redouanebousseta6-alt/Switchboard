@@ -60,6 +60,7 @@ export class PropertiesComponent implements OnInit, OnDestroy {
       verticalAlign: ['middle'],
       letterSpacing: [0],
       lineSpacing: [1.16],
+      textTransform: ['none'],
       strokeColor: ['transparent'],
       strokeWidthValue: [0],
 
@@ -196,6 +197,7 @@ export class PropertiesComponent implements OnInit, OnDestroy {
       verticalAlign: isSwitchboardTextbox ? (object.verticalAlign || 'middle') : 'middle',
       letterSpacing: isSwitchboardTextbox ? (object.letterSpacing || 0) : 0,
       lineSpacing: isSwitchboardTextbox ? (object.lineSpacing || 1.16) : 1.16,
+      textTransform: isSwitchboardTextbox ? (object.textTransform || 'none') : 'none',
       strokeColor: isSwitchboardTextbox ? (object.strokeColor || 'transparent') : 'transparent',
       strokeWidthValue: isSwitchboardTextbox ? (object.strokeWidthValue || 0) : 0,
 
@@ -282,6 +284,11 @@ export class PropertiesComponent implements OnInit, OnDestroy {
         this.selectedObject.setFillTextBox(values.fillTextBox);
       }
 
+      // Update text transform
+      if (this.selectedObject.setTextTransform) {
+        this.selectedObject.setTextTransform(values.textTransform);
+      }
+
       // Update stroke
       if (this.selectedObject.setStrokeColor) {
         this.selectedObject.setStrokeColor(values.strokeColor);
@@ -364,6 +371,10 @@ export class PropertiesComponent implements OnInit, OnDestroy {
   toggleFillTextBox() {
     const currentValue = this.propertiesForm.get('fillTextBox')?.value;
     this.propertiesForm.patchValue({ fillTextBox: !currentValue });
+  }
+
+  setTextTransform(value: string) {
+    this.propertiesForm.patchValue({ textTransform: value });
   }
 
   isSwitchboardTextbox(): boolean {

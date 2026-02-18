@@ -17,6 +17,7 @@ export class SwitchboardTextbox extends fabric.Textbox {
   public lineSpacing: number = 1;
   public strokeColor: string = 'transparent';
   public strokeWidthValue: number = 0;
+  public textTransform: 'none' | 'uppercase' | 'lowercase' = 'none';
   
   private _fittingInProgress = false;
   private _fitTimeout: any = null;
@@ -44,6 +45,7 @@ export class SwitchboardTextbox extends fabric.Textbox {
       this.lineSpacing = options.lineSpacing || 1;
       this.strokeColor = options.strokeColor || options.stroke || 'transparent';
       this.strokeWidthValue = options.strokeWidthValue || options.strokeWidth || 0;
+      this.textTransform = options.textTransform || 'none';
     }
 
     // Force initial dimensions
@@ -214,6 +216,25 @@ export class SwitchboardTextbox extends fabric.Textbox {
     this.dirty = true;
   }
 
+  /**
+   * Transform text for rendering/measurement without modifying the stored text.
+   * During editing, show original text so the user types naturally.
+   */
+  override _splitTextIntoLines(text: string): any {
+    if (!this.isEditing && this.textTransform !== 'none') {
+      if (this.textTransform === 'uppercase') text = text.toUpperCase();
+      else if (this.textTransform === 'lowercase') text = text.toLowerCase();
+    }
+    return super._splitTextIntoLines(text);
+  }
+
+  setTextTransform(value: 'none' | 'uppercase' | 'lowercase'): void {
+    this.textTransform = value;
+    this.dirty = true;
+    this.initDimensions();
+    if (this.fillTextBox) this.fitTextToBox();
+  }
+
   // Property setters
   setText(value: string): void {
     this.text = value;
@@ -277,6 +298,7 @@ export class SwitchboardTextbox extends fabric.Textbox {
       lineSpacing: this.lineSpacing,
       strokeColor: this.strokeColor,
       strokeWidthValue: this.strokeWidthValue,
+      textTransform: this.textTransform,
       type: 'switchboard-textbox'
     };
   }
