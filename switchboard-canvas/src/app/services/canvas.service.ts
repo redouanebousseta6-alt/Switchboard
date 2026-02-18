@@ -71,16 +71,10 @@ export class CanvasService {
       window.addEventListener('resize', () => this.centerDesignArea());
     }
     
-    setTimeout(() => {
-      // Set default zoom to 40% only in editor mode (not headless/API mode)
-      // The setZoom method will automatically center the canvas
-      if (!this.isHeadlessMode) {
-        this.setZoom(0.4);
-      } else {
-        // In headless mode, just center without zoom
-        this.centerDesignArea();
-      }
-    }, 300);
+    // In headless mode, center after a short delay
+    if (this.isHeadlessMode) {
+      setTimeout(() => this.centerDesignArea(), 300);
+    }
 
     return this.canvas;
   }
@@ -634,63 +628,115 @@ export class CanvasService {
   }
 
   /**
-   * Generate thumbnail data URL
+   * Generate thumbnail data URL by capturing the design frame area.
+   * Temporarily resets the viewport to identity so crop coordinates are reliable.
    */
-  async generateThumbnail(width: number = 300, height: number = 200): Promise<string> {
+  async generateThumbnail(thumbWidth: number = 300): Promise<string> {
     if (!this.canvas) return '';
-    
-    // Find the canvas frame to zoom into it for the thumbnail
+
     const frame = this.canvas.getObjects().find((obj: any) => (obj as any).isCanvasFrame);
-    
     if (!frame) {
-      console.warn('⚠️ Canvas frame not found for export, exporting whole workspace');
-      return this.canvas.toDataURL({ format: 'png', quality: 0.8, multiplier: 1 } as any);
+      console.warn('⚠️ Canvas frame not found for thumbnail');
+      return '';
     }
 
-    // Capture the design area specifically
-    return this.canvas.toDataURL({
-      format: 'png',
-      quality: 1, // Higher quality for export
-      left: frame.left,
-      top: frame.top,
-      width: frame.width,
-      height: frame.height,
-      multiplier: width / frame.width, // Scale to requested width
-      enableRetinaScaling: false
-    } as any);
+    // Save current viewport and reset to identity so toDataURL coordinates match canvas space
+    const originalVpt = [...this.canvas.viewportTransform!];
+    this.canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
+    this.canvas.renderAll();
+
+    let dataUrl = '';
+    try {
+      dataUrl = this.canvas.toDataURL({
+        format: 'png',
+        quality: 0.8,
+        left: frame.left,
+        top: frame.top,
+        width: frame.width,
+        height: frame.height,
+        multiplier: thumbWidth / (frame.width || 800),
+        enableRetinaScaling: false,
+      } as any);
+    } catch (err) {
+      console.warn('⚠️ toDataURL failed (tainted canvas):', err);
+    }
+
+    // Restore viewport
+    this.canvas.viewportTransform = originalVpt as any;
+    this.canvas.renderAll();
+
+    return dataUrl;
+  }
+
+  /**
+   * Get the actual visible viewport element (not the Fabric.js internal wrapper).
+   * Fabric wraps the canvas in its own div, so parentElement is 2000x3000.
+   * We need the outer scrollable container that defines the visible area.
+   */
+  private getViewportElement(): HTMLElement | null {
+    if (!this.canvas) return null;
+    const el = this.canvas.getElement().closest('.workspace-scroll') as HTMLElement;
+    return el || this.canvas.getElement().parentElement?.parentElement?.parentElement || null;
+  }
+
+  /**
+   * Zoom to fit the entire design frame in the viewport with padding.
+   */
+  zoomToFit(): void {
+    if (!this.canvas) return;
+
+    const viewport = this.getViewportElement();
+    if (!viewport) return;
+
+    const vpWidth = viewport.clientWidth || 800;
+    const vpHeight = viewport.clientHeight || 600;
+
+    const padding = 60;
+    const zoomX = (vpWidth - padding * 2) / this.canvasWidth;
+    const zoomY = (vpHeight - padding * 2) / this.canvasHeight;
+    const zoom = Math.min(zoomX, zoomY, 1);
+
+    this.canvas.setZoom(zoom);
+    this.zoomLevel = zoom;
+
+    // Center the design in the visible viewport
+    const designCenter = {
+      x: this.canvasOffsetX + this.canvasWidth / 2,
+      y: this.canvasOffsetY + this.canvasHeight / 2
+    };
+    const vpt = this.canvas.viewportTransform!;
+    if (vpt) {
+      vpt[4] = (vpWidth / 2) - (designCenter.x * zoom);
+      vpt[5] = (vpHeight / 2) - (designCenter.y * zoom);
+      this.canvas.requestRenderAll();
+    }
   }
 
   centerDesignArea() {
     if (!this.canvas) return;
     
-    // Use requestAnimationFrame to ensure container is fully rendered
     requestAnimationFrame(() => {
       if (!this.canvas) return;
       
-      // Get the container dimensions
-      const container = this.canvas.getElement().parentElement;
-      if (!container) return;
+      const viewport = this.getViewportElement();
+      if (!viewport) return;
 
-      const containerWidth = container.clientWidth || 800; // Fallback
-      const containerHeight = container.clientHeight || 600;
+      const vpWidth = viewport.clientWidth || 800;
+      const vpHeight = viewport.clientHeight || 600;
 
-      // Design area center in workspace coordinates
       const designCenter = {
         x: this.canvasOffsetX + this.canvasWidth / 2,
         y: this.canvasOffsetY + this.canvasHeight / 2
       };
 
-      // Calculate the transform to center the design area
-      // vpt[4] and vpt[5] are the pan offsets
       const zoom = this.canvas.getZoom();
       const vpt = this.canvas.viewportTransform!;
       
       if (vpt) {
-        vpt[4] = (containerWidth / 2) - (designCenter.x * zoom);
-        vpt[5] = (containerHeight / 2) - (designCenter.y * zoom);
+        vpt[4] = (vpWidth / 2) - (designCenter.x * zoom);
+        vpt[5] = (vpHeight / 2) - (designCenter.y * zoom);
         
         this.canvas.requestRenderAll();
-        console.log('🎯 Canvas centered at zoom:', Math.round(zoom * 100) + '%');
       }
     });
   }

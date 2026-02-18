@@ -1,14 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import * as fabric from 'fabric';
 import { DatabaseService, Template } from '../../services/database.service';
 import { ApiService } from '../../services/api.service';
 import { NotificationService } from '../../services/notification.service';
-
-// Import custom Fabric classes so they register with classRegistry before loadFromJSON
-import '../../editor/fabric/switchboard-image';
-import '../../editor/fabric/switchboard-textbox';
 
 @Component({
   selector: 'app-templates-gallery',
@@ -41,9 +36,6 @@ export class TemplatesGalleryComponent implements OnInit {
 
       // Load all templates from local DB (now includes synced backend templates)
       this.templates = await this.db.getAllTemplates();
-
-      // Generate thumbnails in the background for templates missing them
-      this.generateMissingThumbnails();
     } catch (error) {
       console.error('Error loading templates:', error);
     } finally {
@@ -81,69 +73,6 @@ export class TemplatesGalleryComponent implements OnInit {
     } catch (error) {
       // Backend may be unreachable; continue with local templates only
       console.warn('Could not sync templates from backend:', error);
-    }
-  }
-
-  /**
-   * Generate thumbnails for templates that don't have one.
-   * Uses an off-screen Fabric.js StaticCanvas to render the template config,
-   * finds the Canvas Frame, and exports a cropped image.
-   */
-  private async generateMissingThumbnails(): Promise<void> {
-    const templatesNeedingThumbnails = this.templates.filter(t => !t.thumbnailUrl && t.configuration);
-    if (templatesNeedingThumbnails.length === 0) return;
-
-    for (const template of templatesNeedingThumbnails) {
-      try {
-        const thumbnail = await this.renderThumbnail(template.configuration);
-        if (thumbnail) {
-          template.thumbnailUrl = thumbnail;
-          await this.db.saveTemplate(template);
-        }
-      } catch (err) {
-        console.warn(`Could not generate thumbnail for "${template.displayName}":`, err);
-      }
-    }
-  }
-
-  /**
-   * Render a template configuration into a thumbnail data URL using an off-screen canvas.
-   * Finds the Canvas Frame rect and crops the export to it.
-   */
-  private async renderThumbnail(configuration: any): Promise<string | null> {
-    const canvasEl = document.createElement('canvas');
-    canvasEl.width = 2000;
-    canvasEl.height = 3000;
-    const tempCanvas = new fabric.StaticCanvas(canvasEl);
-
-    try {
-      await tempCanvas.loadFromJSON(configuration);
-      tempCanvas.renderAll();
-
-      // Find the Canvas Frame -- the white design area rect
-      const frame = tempCanvas.getObjects().find((obj: any) =>
-        (obj as any).isCanvasFrame ||
-        (obj as any).name === 'Canvas Frame' ||
-        (obj.type === 'Rect' && obj.fill === '#FFFFFF' && obj.selectable === false)
-      );
-
-      if (!frame) return null;
-
-      const thumbWidth = 300;
-      const multiplier = thumbWidth / (frame.width || 800);
-
-      return tempCanvas.toDataURL({
-        format: 'png',
-        quality: 0.8,
-        left: frame.left,
-        top: frame.top,
-        width: frame.width,
-        height: frame.height,
-        multiplier,
-        enableRetinaScaling: false,
-      } as any);
-    } finally {
-      tempCanvas.dispose();
     }
   }
 

@@ -111,7 +111,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       const canvasData = await this.canvasService.serialize();
       let thumbnail = '';
       try {
-        thumbnail = await this.canvasService.generateThumbnail(300, 200);
+        thumbnail = await this.canvasService.generateThumbnail(300);
       } catch (thumbError) {
         console.warn('⚠️ Could not generate thumbnail (likely CORS/Tainted Canvas):', thumbError);
       }
@@ -163,14 +163,13 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       this.canvasService.initCanvas('fabric-canvas');
       this.canvasDimensions = this.canvasService.getCanvasDimensions();
       
-      // For new templates, ensure canvas is centered after initialization
+      // For new templates, set default zoom and center
+      // For existing templates, loadTemplate handles zoom via zoomToFit
       if (this.isNewTemplate) {
-        // The initCanvas will set zoom to 40% and center automatically
-        // But we add an extra delay to ensure container is fully rendered
         setTimeout(() => {
           this.canvasService.setZoom(0.4);
           this.zoomLevel = 40;
-        }, 400);
+        }, 300);
       }
       
       // Update zoom level display periodically (for Ctrl+Scroll)
@@ -218,14 +217,15 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       if (template) {
         console.log('Loaded template:', template);
         this.templateName = template.displayName;
-        // The canvas initialization happens in ngAfterViewInit, so we wait a bit
+        // Wait for canvas initialization (ngAfterViewInit runs initCanvas at 100ms)
         setTimeout(async () => {
           await this.canvasService.loadFromJSON(template!.configuration);
-          // Set zoom to 40% after loading template (only in editor mode)
-          // The setZoom method will automatically center the canvas
-          this.canvasService.setZoom(0.4);
-          this.zoomLevel = 40;
-        }, 200);
+          // Small extra delay to ensure DOM layout is settled before measuring container
+          setTimeout(() => {
+            this.canvasService.zoomToFit();
+            this.zoomLevel = Math.round(this.canvasService.getZoom() * 100);
+          }, 100);
+        }, 300);
       } else {
         this.notificationService.error('Template not found');
         this.router.navigate(['/']);
@@ -241,7 +241,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     try {
       // Get current dimensions directly from the service to ensure they are up to date
       const dims = this.canvasService.getCanvasDimensions();
-      const dataUrl = await this.canvasService.generateThumbnail(dims.width, dims.height);
+      const dataUrl = await this.canvasService.generateThumbnail(dims.width);
       const link = document.createElement('a');
       link.download = `${this.templateName.toLowerCase().replace(/\s+/g, '-')}.png`;
       link.href = dataUrl;
@@ -327,6 +327,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       width: 200,
       height: 100,
       fill: '#cccccc',
+      stroke: 'transparent',
       strokeWidth: 0,
       rx: 0,
       ry: 0,

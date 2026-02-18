@@ -23,7 +23,8 @@ export class SwitchboardTextbox extends fabric.Textbox {
 
   constructor(text: string, options?: any) {
     super(text, {
-      lockScalingY: false, // Enable vertical scaling handles
+      lockScalingY: false,
+      paintFirst: 'stroke', // Stroke renders behind fill so it appears outside the letters
       ...options
     });
 

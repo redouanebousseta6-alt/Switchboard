@@ -42,8 +42,8 @@ export class PropertiesComponent implements OnInit, OnDestroy {
       // Rectangle-specific
       radius: [0],
       fill: ['#3B82F6'],
-      stroke: ['#1E40AF'],
-      strokeWidth: [2],
+      stroke: ['transparent'],
+      strokeWidth: [0],
       
       // Text-specific
       textContent: [''],
@@ -178,8 +178,8 @@ export class PropertiesComponent implements OnInit, OnDestroy {
       // Rectangle properties
       radius: Math.round(object.rx || 0),
       fill: ensureValidColor(object.fill, '#3B82F6'),
-      stroke: ensureValidColor(object.stroke, '#1E40AF'),
-      strokeWidth: object.strokeWidth || 2,
+      stroke: ensureValidColor(object.stroke, 'transparent'),
+      strokeWidth: object.strokeWidth ?? 0,
       
       // Text properties
       textContent: isText ? (object.text || '') : '',
