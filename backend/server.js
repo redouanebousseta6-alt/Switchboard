@@ -180,6 +180,11 @@ const generateQueue = new RequestQueue();
 const RENDER_TIMEOUT = parseInt(process.env.RENDER_TIMEOUT || '60000');
 const NAV_TIMEOUT = parseInt(process.env.NAV_TIMEOUT || '45000');
 const MAX_NAV_RETRIES = 3;
+const WORKER_COUNT = parseInt(process.env.WORKER_COUNT || '2');
+
+function getMemoryMB() {
+  return Math.round(process.memoryUsage().rss / 1024 / 1024);
+}
 
 /**
  * Create and initialize a Puppeteer page for rendering.
@@ -369,8 +374,9 @@ app.get('/api/health', (req, res) => {
     success: true,
     browserConnected: browserInstance?.connected || false,
     queueLength: generateQueue.length,
+    workerCount: WORKER_COUNT,
     uptime: process.uptime(),
-    memoryUsage: Math.round(process.memoryUsage().rss / 1024 / 1024) + 'MB'
+    memoryUsage: getMemoryMB() + 'MB'
   });
 });
 
@@ -388,7 +394,7 @@ app.get('/api/health', (req, res) => {
  *      ...
  *    ]}
  * 
- * All jobs are processed SEQUENTIALLY on a single page to minimize memory usage.
+ * Jobs are distributed across WORKER_COUNT parallel pages for speed.
  * Requests are queued so only one batch runs at a time.
  */
 app.post('/api/v1/generate', async (req, res) => {
@@ -442,83 +448,113 @@ app.post('/api/v1/generate', async (req, res) => {
 });
 
 /**
- * Core generation logic, separated from the HTTP handler.
- * Processes all jobs SEQUENTIALLY on a single reusable page.
+ * Process a chunk of jobs sequentially on a single page.
+ * Each worker runs one of these in parallel with other workers.
  */
-async function processGenerateRequest(template, sizes, elements, variations) {
-  const browser = await getBrowser();
-  const frontendUrlForRender = process.env.FRONTEND_URL || 'http://localhost:4200';
-  const allResults = [];
-
-  // Build flat list of jobs
-  const jobs = [];
-  if (variations && Array.isArray(variations)) {
-    console.log(`[Generate] Batch mode: ${variations.length} variations`);
-    for (let i = 0; i < variations.length; i++) {
-      const variation = variations[i];
-      const variationSizes = variation.sizes || sizes || [{ width: 1080, height: 1080 }];
-      const variationElements = variation.elements || elements || {};
-      for (const size of variationSizes) {
-        jobs.push({ variationIndex: i, size, elements: variationElements });
-      }
-    }
-  } else {
-    console.log('[Generate] Single mode');
-    const targetSizes = sizes || [{ width: 1080, height: 1080 }];
-    for (const size of targetSizes) {
-      jobs.push({ variationIndex: 0, size, elements: elements || {} });
-    }
-  }
-
-  console.log(`[Generate] Total jobs: ${jobs.length}`);
-
-  // Create ONE page, process ALL jobs sequentially on it
-  // This is much more memory-efficient than parallel pages
+async function workerProcessChunk(workerId, browser, frontendUrlForRender, template, jobs, hasVariations) {
+  const results = [];
   let page = null;
+
   try {
     page = await createRendererPage(browser, frontendUrlForRender);
+    console.log(`[Worker ${workerId}] Page ready, processing ${jobs.length} jobs`);
 
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
-      console.log(`[Generate] Processing job ${i + 1}/${jobs.length}...`);
 
       try {
         const result = await renderImageOnPage(page, template, job.elements, job.size);
-        allResults.push({
+        results.push({
+          originalIndex: job.originalIndex,
           ...result,
-          ...(variations ? { variationIndex: job.variationIndex } : {})
+          ...(hasVariations ? { variationIndex: job.variationIndex } : {})
         });
       } catch (err) {
-        console.error(`[Generate] Job ${i + 1} failed: ${err.message}`);
-        allResults.push({
+        console.error(`[Worker ${workerId}] Job ${i + 1}/${jobs.length} failed: ${err.message}`);
+        results.push({
+          originalIndex: job.originalIndex,
           size: job.size,
           success: false,
           error: err.message || 'Generation failed',
-          ...(variations ? { variationIndex: job.variationIndex } : {})
+          ...(hasVariations ? { variationIndex: job.variationIndex } : {})
         });
 
-        // If the page crashed, try to recover with a fresh page
+        // If the page crashed, try to recover
         if (err.message.includes('Target closed') || 
             err.message.includes('Session closed') ||
             err.message.includes('Protocol error') ||
             err.message.includes('Navigation failed')) {
-          console.warn('[Generate] Page seems dead, creating a fresh one...');
+          console.warn(`[Worker ${workerId}] Page crashed, creating a fresh one...`);
           try { await page.close(); } catch (_) {}
-          
-          // Re-get browser in case it crashed too
           const freshBrowser = await getBrowser();
           page = await createRendererPage(freshBrowser, frontendUrlForRender);
         }
       }
     }
   } finally {
-    // Always close the page to free memory
     if (page) {
       try { await page.close(); } catch (_) {}
     }
+    console.log(`[Worker ${workerId}] Done (${results.filter(r => r.success).length}/${results.length} succeeded)`);
   }
 
-  console.log(`[Generate] Complete: ${allResults.filter(r => r.success).length}/${allResults.length} succeeded`);
+  return results;
+}
+
+/**
+ * Core generation logic with parallel worker pool.
+ * Distributes jobs across WORKER_COUNT pages running in parallel.
+ */
+async function processGenerateRequest(template, sizes, elements, variations) {
+  const browser = await getBrowser();
+  const frontendUrlForRender = process.env.FRONTEND_URL || 'http://localhost:4200';
+
+  // Build flat list of jobs
+  const jobs = [];
+  const hasVariations = variations && Array.isArray(variations);
+  if (hasVariations) {
+    console.log(`[Generate] Batch mode: ${variations.length} variations`);
+    for (let i = 0; i < variations.length; i++) {
+      const variation = variations[i];
+      const variationSizes = variation.sizes || sizes || [{ width: 1080, height: 1080 }];
+      const variationElements = variation.elements || elements || {};
+      for (const size of variationSizes) {
+        jobs.push({ originalIndex: jobs.length, variationIndex: i, size, elements: variationElements });
+      }
+    }
+  } else {
+    console.log('[Generate] Single mode');
+    const targetSizes = sizes || [{ width: 1080, height: 1080 }];
+    for (const size of targetSizes) {
+      jobs.push({ originalIndex: jobs.length, variationIndex: 0, size, elements: elements || {} });
+    }
+  }
+
+  // Use fewer workers if there are fewer jobs than workers
+  const workerCount = Math.min(WORKER_COUNT, jobs.length);
+  console.log(`[Generate] ${jobs.length} jobs across ${workerCount} workers | Memory: ${getMemoryMB()}MB`);
+
+  // Distribute jobs round-robin across workers
+  const chunks = Array.from({ length: workerCount }, () => []);
+  for (let i = 0; i < jobs.length; i++) {
+    chunks[i % workerCount].push(jobs[i]);
+  }
+
+  // Launch all workers in parallel
+  const workerPromises = chunks.map((chunk, i) =>
+    workerProcessChunk(i + 1, browser, frontendUrlForRender, template, chunk, hasVariations)
+  );
+
+  const workerResults = await Promise.all(workerPromises);
+
+  // Merge and sort results back to original order
+  const allResults = workerResults
+    .flat()
+    .sort((a, b) => a.originalIndex - b.originalIndex)
+    .map(({ originalIndex, ...rest }) => rest);
+
+  const succeeded = allResults.filter(r => r.success).length;
+  console.log(`[Generate] Complete: ${succeeded}/${allResults.length} succeeded | Memory: ${getMemoryMB()}MB`);
   return allResults;
 }
 
@@ -559,7 +595,7 @@ process.on('SIGINT', async () => {
 // =============================================================================
 
 app.listen(port, async () => {
-  console.log(`Switchboard API Backend running at http://localhost:${port}`);
+  console.log(`Switchboard API Backend running at http://localhost:${port} (${WORKER_COUNT} parallel workers)`);
   
   // Pre-warm the browser on startup so the first request is fast
   try {
