@@ -3,6 +3,16 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 
+export interface BackendFont {
+  id: string;
+  name: string;
+  fileName: string;
+  mimeType: string;
+  url: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -69,5 +79,37 @@ export class ApiService {
       console.error('Error fetching template:', error);
       throw error;
     }
+  }
+
+  /**
+   * Upload a font file to backend persistent storage
+   */
+  async uploadFont(file: File, name?: string): Promise<{ success: boolean; font: BackendFont }> {
+    const formData = new FormData();
+    formData.append('font', file);
+    if (name) {
+      formData.append('name', name);
+    }
+    return await firstValueFrom(
+      this.http.post<{ success: boolean; font: BackendFont }>(`${this.baseUrl}/fonts`, formData)
+    );
+  }
+
+  /**
+   * List all fonts stored on backend
+   */
+  async getFonts(): Promise<{ success: boolean; fonts: BackendFont[] }> {
+    return await firstValueFrom(
+      this.http.get<{ success: boolean; fonts: BackendFont[] }>(`${this.baseUrl}/fonts`)
+    );
+  }
+
+  /**
+   * Delete a backend font by ID
+   */
+  async deleteFont(fontId: string): Promise<{ success: boolean }> {
+    return await firstValueFrom(
+      this.http.delete<{ success: boolean }>(`${this.baseUrl}/fonts/${fontId}`)
+    );
   }
 }

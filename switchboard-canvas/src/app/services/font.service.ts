@@ -1,13 +1,19 @@
 import { Injectable } from '@angular/core';
 import { DatabaseService, FontAsset } from './database.service';
+import { ApiService } from './api.service';
 
 @Injectable({
   providedIn: 'root'
 })
 export class FontService {
   private loadedFonts: Set<string> = new Set();
+  private backendFontsSynced = false;
+  private syncBackendFontsPromise: Promise<void> | null = null;
 
-  constructor(private db: DatabaseService) {}
+  constructor(
+    private db: DatabaseService,
+    private apiService: ApiService
+  ) {}
 
   /**
    * Sync fonts from the /public/fonts folder into the database
@@ -89,9 +95,67 @@ export class FontService {
    * Load all fonts from database into the browser
    */
   async loadAllFonts(): Promise<void> {
+    await this.ensureBackendFontsSynced();
     const fonts = await this.db.getAllFonts();
     for (const font of fonts) {
       await this.loadFont(font);
+    }
+  }
+
+  /**
+   * Pull persisted backend fonts into local DB so they are available
+   * both in the editor and the headless renderer.
+   */
+  async ensureBackendFontsSynced(force = false): Promise<void> {
+    if (this.backendFontsSynced && !force) return;
+    if (this.syncBackendFontsPromise && !force) {
+      await this.syncBackendFontsPromise;
+      return;
+    }
+
+    this.syncBackendFontsPromise = this.syncBackendFonts();
+    try {
+      await this.syncBackendFontsPromise;
+      this.backendFontsSynced = true;
+    } finally {
+      this.syncBackendFontsPromise = null;
+    }
+  }
+
+  private async syncBackendFonts(): Promise<void> {
+    try {
+      const response = await this.apiService.getFonts();
+      const backendFonts = response?.fonts || [];
+      if (!backendFonts.length) return;
+
+      for (const backendFont of backendFonts) {
+        const localId = `backend-${backendFont.id}`;
+        const existing = await this.db.getFont(localId);
+        if (existing) continue;
+
+        const fontResponse = await fetch(backendFont.url);
+        if (!fontResponse.ok) {
+          throw new Error(`Failed to fetch backend font ${backendFont.name}: ${fontResponse.status}`);
+        }
+
+        const blob = await fontResponse.blob();
+        const previewUrl = await this.generatePreview(backendFont.name, blob);
+
+        const fontAsset: FontAsset = {
+          id: localId,
+          name: backendFont.name,
+          fileName: backendFont.fileName,
+          blob,
+          mimeType: backendFont.mimeType || blob.type || 'font/ttf',
+          previewUrl,
+          uploadedAt: new Date(backendFont.createdAt || Date.now())
+        };
+
+        await this.db.saveFont(fontAsset);
+      }
+    } catch (err) {
+      // Keep the editor usable even if backend fonts are temporarily unavailable
+      console.warn('⚠️ Could not sync backend fonts:', err);
     }
   }
 

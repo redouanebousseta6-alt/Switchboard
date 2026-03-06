@@ -2,7 +2,7 @@ import { Component, OnInit, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DatabaseService, FontAsset } from '../../services/database.service';
 import { FontService } from '../../services/font.service';
-import { v4 as uuidv4 } from 'uuid';
+import { ApiService } from '../../services/api.service';
 
 @Component({
   selector: 'app-font-library',
@@ -20,7 +20,8 @@ export class FontLibraryComponent implements OnInit {
 
   constructor(
     private db: DatabaseService,
-    private fontService: FontService
+    private fontService: FontService,
+    private apiService: ApiService
   ) {}
 
   ngOnInit() {
@@ -29,6 +30,7 @@ export class FontLibraryComponent implements OnInit {
 
   async syncAndLoad() {
     await this.fontService.syncPublicFonts();
+    await this.fontService.ensureBackendFontsSynced(true);
     await this.loadFonts();
   }
 
@@ -53,17 +55,19 @@ export class FontLibraryComponent implements OnInit {
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const fontName = file.name.split('.')[0];
+        const fontName = file.name.split('.').slice(0, -1).join('.') || file.name;
+        const uploadResult = await this.apiService.uploadFont(file, fontName);
+        const backendFont = uploadResult.font;
         
         // Generate preview
-        const previewUrl = await this.fontService.generatePreview(fontName, file);
+        const previewUrl = await this.fontService.generatePreview(backendFont.name, file);
 
         const fontAsset: FontAsset = {
-          id: uuidv4(),
-          name: fontName,
-          fileName: file.name,
+          id: `backend-${backendFont.id}`,
+          name: backendFont.name,
+          fileName: backendFont.fileName || file.name,
           blob: file,
-          mimeType: file.type || 'font/ttf',
+          mimeType: backendFont.mimeType || file.type || 'font/ttf',
           previewUrl: previewUrl,
           uploadedAt: new Date()
         };
@@ -87,6 +91,14 @@ export class FontLibraryComponent implements OnInit {
   async deleteFont(event: Event, id: string) {
     event.stopPropagation();
     if (confirm('Are you sure you want to delete this font?')) {
+      if (id.startsWith('backend-')) {
+        const backendId = id.replace('backend-', '');
+        try {
+          await this.apiService.deleteFont(backendId);
+        } catch (err) {
+          console.error('Error deleting backend font:', err);
+        }
+      }
       await this.db.deleteFont(id);
       await this.loadFonts();
     }

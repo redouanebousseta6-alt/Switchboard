@@ -2,7 +2,12 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const { templates } = require('./db');
+const fs = require('fs');
+const fsp = require('fs/promises');
+const path = require('path');
+const multer = require('multer');
+const { v4: uuidv4 } = require('uuid');
+const { templates, fonts } = require('./db');
 const { uploadToS3 } = require('./s3-service');
 require('dotenv').config();
 
@@ -40,6 +45,52 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(bodyParser.json({ limit: '50mb' }));
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+});
+
+const ALLOWED_FONT_EXTENSIONS = new Set(['.ttf', '.otf', '.woff', '.woff2']);
+const ALLOWED_FONT_MIME_TYPES = new Set([
+  'font/ttf',
+  'font/otf',
+  'font/woff',
+  'font/woff2',
+  'application/font-woff',
+  'application/font-woff2',
+  'application/x-font-ttf',
+  'application/x-font-opentype',
+  'application/octet-stream'
+]);
+
+let fontsDir = process.env.FONTS_DIR || (process.env.DB_PATH
+  ? path.join(path.dirname(process.env.DB_PATH), 'fonts')
+  : '/data/fonts');
+
+async function ensureFontsDirectory() {
+  try {
+    await fsp.mkdir(fontsDir, { recursive: true });
+  } catch (err) {
+    // Fallback for local/dev environments where /data may not exist
+    const fallbackDir = path.join(__dirname, 'fonts');
+    await fsp.mkdir(fallbackDir, { recursive: true });
+    fontsDir = fallbackDir;
+    console.warn(`[Fonts] Falling back to local font directory: ${fontsDir}`);
+  }
+}
+
+function getFontResponse(req, row) {
+  return {
+    id: row.id,
+    name: row.name,
+    fileName: row.file_name,
+    mimeType: row.mime_type,
+    url: `${req.protocol}://${req.get('host')}/api/fonts/${row.id}/file`,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
 
 // =============================================================================
 // PERSISTENT BROWSER POOL
@@ -367,6 +418,115 @@ app.get('/api/templates/:apiName', (req, res) => {
 });
 
 /**
+ * Upload and persist a font file on backend storage volume
+ */
+app.post('/api/fonts', upload.single('font'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'Missing font file' });
+    }
+
+    const ext = path.extname(req.file.originalname || '').toLowerCase();
+    if (!ALLOWED_FONT_EXTENSIONS.has(ext)) {
+      return res.status(400).json({ success: false, error: 'Unsupported font extension. Allowed: .ttf, .otf, .woff, .woff2' });
+    }
+    if (req.file.mimetype && !ALLOWED_FONT_MIME_TYPES.has(req.file.mimetype)) {
+      return res.status(400).json({ success: false, error: `Unsupported font MIME type: ${req.file.mimetype}` });
+    }
+
+    await ensureFontsDirectory();
+
+    const requestedName = String(req.body?.name || '').trim();
+    const fontName = requestedName || path.parse(req.file.originalname).name;
+    if (!fontName) {
+      return res.status(400).json({ success: false, error: 'Invalid font name' });
+    }
+
+    const existing = fonts.getByName(fontName);
+    const fontId = existing?.id || uuidv4();
+    const targetPath = path.join(fontsDir, `${fontId}${ext}`);
+
+    if (existing?.storage_path && existing.storage_path !== targetPath && fs.existsSync(existing.storage_path)) {
+      try { await fsp.unlink(existing.storage_path); } catch (_) {}
+    }
+
+    await fsp.writeFile(targetPath, req.file.buffer);
+
+    fonts.save({
+      id: fontId,
+      name: fontName,
+      fileName: req.file.originalname,
+      storagePath: targetPath,
+      mimeType: req.file.mimetype || 'application/octet-stream'
+    });
+
+    const saved = fonts.getById(fontId);
+    res.json({ success: true, font: getFontResponse(req, saved) });
+  } catch (err) {
+    console.error('Font Upload Error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to upload font' });
+  }
+});
+
+/**
+ * List backend-stored fonts
+ */
+app.get('/api/fonts', (req, res) => {
+  try {
+    const items = fonts.getAll().map(row => getFontResponse(req, row));
+    res.json({ success: true, fonts: items });
+  } catch (err) {
+    console.error('Font List Error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to list fonts' });
+  }
+});
+
+/**
+ * Serve a stored font file
+ */
+app.get('/api/fonts/:id/file', (req, res) => {
+  try {
+    const row = fonts.getById(req.params.id);
+    if (!row) {
+      return res.status(404).json({ success: false, error: 'Font not found' });
+    }
+    if (!row.storage_path || !fs.existsSync(row.storage_path)) {
+      return res.status(404).json({ success: false, error: 'Font file missing from storage' });
+    }
+
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    if (row.mime_type) {
+      res.type(row.mime_type);
+    }
+    return res.sendFile(path.resolve(row.storage_path));
+  } catch (err) {
+    console.error('Font File Error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to serve font file' });
+  }
+});
+
+/**
+ * Delete a backend font
+ */
+app.delete('/api/fonts/:id', async (req, res) => {
+  try {
+    const row = fonts.getById(req.params.id);
+    if (!row) {
+      return res.status(404).json({ success: false, error: 'Font not found' });
+    }
+
+    fonts.deleteById(req.params.id);
+    if (row.storage_path && fs.existsSync(row.storage_path)) {
+      try { await fsp.unlink(row.storage_path); } catch (_) {}
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Font Delete Error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to delete font' });
+  }
+});
+
+/**
  * Health check endpoint
  */
 app.get('/api/health', (req, res) => {
@@ -596,6 +756,7 @@ process.on('SIGINT', async () => {
 
 app.listen(port, async () => {
   console.log(`Switchboard API Backend running at http://localhost:${port} (${WORKER_COUNT} parallel workers)`);
+  await ensureFontsDirectory();
   
   // Pre-warm the browser on startup so the first request is fast
   try {

@@ -18,6 +18,18 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS fonts (
+    id TEXT PRIMARY KEY,
+    name TEXT UNIQUE,
+    file_name TEXT,
+    storage_path TEXT,
+    mime_type TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
 const templates = {
   save: (template) => {
     const stmt = db.prepare(`
@@ -55,4 +67,40 @@ const templates = {
   }
 };
 
-module.exports = { templates };
+const fonts = {
+  save: (font) => {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO fonts (id, name, file_name, storage_path, mime_type, updated_at)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+    return stmt.run(
+      font.id,
+      font.name,
+      font.fileName,
+      font.storagePath,
+      font.mimeType
+    );
+  },
+
+  getById: (id) => {
+    const stmt = db.prepare('SELECT * FROM fonts WHERE id = ?');
+    return stmt.get(id);
+  },
+
+  getByName: (name) => {
+    const stmt = db.prepare('SELECT * FROM fonts WHERE name = ?');
+    return stmt.get(name);
+  },
+
+  getAll: () => {
+    const stmt = db.prepare('SELECT id, name, file_name, storage_path, mime_type, created_at, updated_at FROM fonts ORDER BY updated_at DESC');
+    return stmt.all();
+  },
+
+  deleteById: (id) => {
+    const stmt = db.prepare('DELETE FROM fonts WHERE id = ?');
+    return stmt.run(id);
+  }
+};
+
+module.exports = { templates, fonts };
