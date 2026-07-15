@@ -52,6 +52,8 @@ export class FontService {
       { name: 'Helvetica Now Display ExtBlk', path: 'helvetica-now-display/HelveticaNowDisplay-ExtBlk.ttf' },
       { name: 'Noctis Heavy', path: 'noctis/Noctis-Heavy.ttf' },
       { name: 'Recoleta Bold', path: 'recoleta/Recoleta-Bold.ttf' },
+      { name: 'Feeling Passionate', path: 'feeling-passionate/Feeling Passionate.otf' },
+      { name: 'tt-norms-pro-extra-black', path: 'tt-norms-pro-extra-black/tt-norms-pro-extra-black.ttf' },
     ];
 
     console.log('🔄 Syncing public fonts...');
@@ -103,9 +105,57 @@ export class FontService {
   }
 
   /**
-   * Pull persisted backend fonts into local DB so they are available
-   * both in the editor and the headless renderer.
+   * Full font preparation for headless rendering — syncs public + backend
+   * fonts into IndexedDB, registers them, and waits for the browser to finish loading.
    */
+  async prepareFontsForRender(): Promise<void> {
+    await this.syncPublicFonts();
+    await this.loadAllFonts();
+    await (document as any).fonts.ready;
+  }
+
+  /**
+   * Upload a font file to backend storage and save it locally in IndexedDB.
+   */
+  async uploadFontToBackend(file: File, fontName?: string): Promise<FontAsset> {
+    const name = fontName || file.name.split('.').slice(0, -1).join('.') || file.name;
+    const uploadResult = await this.apiService.uploadFont(file, name);
+    const backendFont = uploadResult.font;
+    const previewUrl = await this.generatePreview(backendFont.name, file);
+
+    const fontAsset: FontAsset = {
+      id: `backend-${backendFont.id}`,
+      name: backendFont.name,
+      fileName: backendFont.fileName || file.name,
+      blob: file,
+      mimeType: backendFont.mimeType || file.type || 'font/ttf',
+      previewUrl,
+      uploadedAt: new Date()
+    };
+
+    await this.db.saveFont(fontAsset);
+    await this.loadFont(fontAsset);
+    return fontAsset;
+  }
+
+  /**
+   * Upload any locally-stored fonts that were never saved to the backend.
+   * Runs once on app startup to migrate older uploads.
+   */
+  async syncLocalFontsToBackend(): Promise<void> {
+    const fonts = await this.db.getAllFonts();
+    for (const font of fonts) {
+      if (font.id.startsWith('backend-') || font.id.startsWith('system-')) continue;
+      try {
+        const file = new File([font.blob], font.fileName, { type: font.mimeType });
+        await this.uploadFontToBackend(file, font.name);
+        await this.db.deleteFont(font.id);
+        console.log(`✅ Migrated local font to backend: ${font.name}`);
+      } catch (err) {
+        console.warn(`⚠️ Could not migrate font "${font.name}" to backend:`, err);
+      }
+    }
+  }
   async ensureBackendFontsSynced(force = false): Promise<void> {
     if (this.backendFontsSynced && !force) return;
     if (this.syncBackendFontsPromise && !force) {

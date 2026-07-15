@@ -27,6 +27,7 @@ export class AppComponent implements OnInit {
 
       // Initialize fonts
       await this.fontService.syncPublicFonts();
+      await this.fontService.syncLocalFontsToBackend();
       await this.fontService.loadAllFonts();
     } catch (error) {
       console.error('❌ Database initialization failed:', error);
