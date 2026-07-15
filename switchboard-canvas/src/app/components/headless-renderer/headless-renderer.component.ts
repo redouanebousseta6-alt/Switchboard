@@ -48,12 +48,10 @@ export class HeadlessRendererComponent implements OnInit, AfterViewInit {
       this.canvasService.setupHeadless(width, height);
       this.canvasService.setClippingEnabled(false);
 
-      // 2. Load Fonts (Both from DB and CSS)
-      console.log('🔡 Loading fonts...');
-      await this.fontService.loadAllFonts();
-      // WAIT FOR CSS FONTS: Ensures @font-face fonts are ready
-      await (document as any).fonts.ready;
-      console.log('🔡 Fonts ready');
+      // 2. Sync public + backend fonts, register them, and wait until ready
+      console.log('🔡 Preparing fonts for render...');
+      await this.fontService.prepareFontsForRender();
+      console.log('🔡 Fonts ready:', this.fontService.getLoadedFonts().length);
 
       // 3. Load Design Configuration
       console.log('📄 Loading JSON design...');

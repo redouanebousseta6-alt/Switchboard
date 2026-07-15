@@ -2,6 +2,7 @@ import { Component, OnInit, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DatabaseService, ImageBlob, FontAsset } from '../../services/database.service';
 import { FontService } from '../../services/font.service';
+import { ApiService } from '../../services/api.service';
 import { NotificationService } from '../../services/notification.service';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -25,6 +26,7 @@ export class LibraryComponent implements OnInit {
   constructor(
     private db: DatabaseService,
     private fontService: FontService,
+    private apiService: ApiService,
     private notificationService: NotificationService
   ) {}
 
@@ -89,34 +91,20 @@ export class LibraryComponent implements OnInit {
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const fontName = file.name.split('.')[0];
+        const fontName = file.name.split('.').slice(0, -1).join('.') || file.name;
 
-        // Check if font already exists
         const existingFonts = await this.db.getAllFonts();
         if (existingFonts.some(f => f.name.toLowerCase() === fontName.toLowerCase())) {
           this.notificationService.info(`Font "${fontName}" already exists`);
           continue;
         }
 
-        const previewUrl = await this.fontService.generatePreview(fontName, file);
-
-        const fontAsset: FontAsset = {
-          id: uuidv4(),
-          name: fontName,
-          fileName: file.name,
-          blob: file,
-          mimeType: file.type || 'font/ttf',
-          previewUrl: previewUrl,
-          uploadedAt: new Date()
-        };
-
-        await this.db.saveFont(fontAsset);
-        await this.fontService.loadFont(fontAsset);
+        await this.fontService.uploadFontToBackend(file, fontName);
         successCount++;
       }
       await this.loadFonts();
       if (successCount > 0) {
-        this.notificationService.success(`${successCount} font(s) uploaded successfully`);
+        this.notificationService.success(`${successCount} font(s) uploaded and saved to backend`);
       }
     } catch (error) {
       this.notificationService.error('Failed to upload fonts');
@@ -146,6 +134,14 @@ export class LibraryComponent implements OnInit {
   async deleteFont(event: Event, id: string) {
     event.stopPropagation();
     if (confirm('Delete this font?')) {
+      if (id.startsWith('backend-')) {
+        const backendId = id.replace('backend-', '');
+        try {
+          await this.apiService.deleteFont(backendId);
+        } catch (err) {
+          console.error('Error deleting backend font:', err);
+        }
+      }
       await this.db.deleteFont(id);
       await this.loadFonts();
     }

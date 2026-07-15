@@ -56,24 +56,7 @@ export class FontLibraryComponent implements OnInit {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const fontName = file.name.split('.').slice(0, -1).join('.') || file.name;
-        const uploadResult = await this.apiService.uploadFont(file, fontName);
-        const backendFont = uploadResult.font;
-        
-        // Generate preview
-        const previewUrl = await this.fontService.generatePreview(backendFont.name, file);
-
-        const fontAsset: FontAsset = {
-          id: `backend-${backendFont.id}`,
-          name: backendFont.name,
-          fileName: backendFont.fileName || file.name,
-          blob: file,
-          mimeType: backendFont.mimeType || file.type || 'font/ttf',
-          previewUrl: previewUrl,
-          uploadedAt: new Date()
-        };
-
-        await this.db.saveFont(fontAsset);
-        await this.fontService.loadFont(fontAsset);
+        await this.fontService.uploadFontToBackend(file, fontName);
       }
       await this.loadFonts();
     } catch (err) {
