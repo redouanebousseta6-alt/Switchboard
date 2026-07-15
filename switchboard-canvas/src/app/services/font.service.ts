@@ -54,6 +54,12 @@ export class FontService {
       { name: 'Recoleta Bold', path: 'recoleta/Recoleta-Bold.ttf' },
       { name: 'Feeling Passionate', path: 'feeling-passionate/Feeling Passionate.otf' },
       { name: 'tt-norms-pro-extra-black', path: 'tt-norms-pro-extra-black/tt-norms-pro-extra-black.ttf' },
+      { name: 'TT Ramillas Trial Black', path: 'tt-ramillas/TT Ramillas Trial Black.ttf' },
+      { name: 'GillSans Condensed Bold', path: 'gill-sans/GillSans Condensed Bold.otf' },
+      { name: 'GillSans Condensed', path: 'gill-sans/GillSans Condensed.otf' },
+      { name: 'chamberi-headline-bold', path: 'chamberi-headline-bold/chamberi-headline-bold.otf' },
+      { name: 'GianeGothicsans Black', path: 'giane-gothic-sans/GianeGothicsans Black.otf' },
+      { name: 'Formata-Bold', path: 'formata/Formata-Bold.otf' },
     ];
 
     console.log('🔄 Syncing public fonts...');
